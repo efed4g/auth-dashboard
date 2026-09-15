@@ -1,0 +1,37 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: secretpassword
+      POSTGRES_DB: auth_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  backend:
+    build: ./backend
+    ports:
+      - "4000:4000"
+    environment:
+      # Localhost yerine Docker'daki 'postgres' makinesine bağlanıyoruz
+      - DATABASE_URL=postgresql://admin:secretpassword@postgres:5432/auth_db
+      - PORT=4000
+    depends_on:
+      - postgres
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - WDS_SOCKET_PORT=0 # React hata vermesin diye
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:

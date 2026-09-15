@@ -1,0 +1,7 @@
+const path = require('path');
+// CLI komutları için yol tanımları
+module.exports = {
+    'config': path.resolve('config', 'config.js'),
+    'models-path': path.resolve('models'),
+    'migrations-path': path.resolve('migrations')
+};
