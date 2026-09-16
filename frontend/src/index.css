@@ -1,8 +1,19 @@
-/* index.css */
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
-.google-login-button {
-  @apply inline-block px-6 py-3 bg-red-600 text-white rounded hover:bg-red-700 transition;
+@theme {
+  --color-brand-50: oklch(0.97 0.014 254);
+  --color-brand-100: oklch(0.93 0.032 254);
+  --color-brand-500: oklch(0.58 0.18 264);
+  --color-brand-600: oklch(0.51 0.19 264);
+  --color-brand-700: oklch(0.45 0.18 264);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 antialiased;
 }

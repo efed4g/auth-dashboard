@@ -1,0 +1,12 @@
+# Secret'lar imaja gömülmesin.
+.env
+.env.*
+!.env.example
+
+node_modules
+npm-debug.log*
+yarn-error.log*
+.git
+.gitignore
+Dockerfile
+.dockerignore

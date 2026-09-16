@@ -1,35 +1,52 @@
-# docker-compose.yml
-version: '3.8'
+# Geliştirme ortamı. Zorunlu değil; sadece veritabanı için
+# `docker compose up postgres` de yeterlidir.
+#
+# Secret'lar burada tutulmaz: backend/.env.development ve
+# frontend/.env.development üzerinden okunur. Postgres kimlik bilgileri için
+# kök dizinde bir .env dosyası oluşturun:
+#   POSTGRES_USER=...  POSTGRES_PASSWORD=...  POSTGRES_DB=...
 
 services:
   postgres:
-    image: postgres:15-alpine
+    image: postgres:16-alpine
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: secretpassword
-      POSTGRES_DB: auth_db
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER tanımlanmalı}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD tanımlanmalı}
+      POSTGRES_DB: ${POSTGRES_DB:-auth_dashboard}
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   backend:
     build: ./backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env.development
+    environment:
+      # Container içinden veritabanına servis adıyla erişilir.
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-auth_dashboard}
+      NODE_ENV: development
+      PORT: "4000"
     ports:
       - "4000:4000"
-    environment:
-      # Localhost yerine Docker'daki 'postgres' makinesine bağlanıyoruz
-      - DATABASE_URL=postgresql://admin:secretpassword@postgres:5432/auth_db
-      - PORT=4000
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
 
   frontend:
     build: ./frontend
+    restart: unless-stopped
+    env_file:
+      - ./frontend/.env.development
     ports:
       - "3000:3000"
-    environment:
-      - WDS_SOCKET_PORT=0 # React hata vermesin diye
     depends_on:
       - backend
 

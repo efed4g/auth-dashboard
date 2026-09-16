@@ -1,0 +1,82 @@
+#!/bin/sh
+#
+# Gerçek .env dosyalarının ve secret'ların commit'lenmesini engeller.
+#
+# .gitignore tek başına yeterli değil: `git add -f` onu atlar ve dosya bir kez
+# commit'lendiğinde geçmişten temizlemek zordur. Bu hook son savunma hattıdır.
+#
+# Kurulum (repo başına bir kez):
+#   git config core.hooksPath .githooks
+#
+# Acil durumda atlamak için:  git commit --no-verify
+
+RED=$(printf '\033[31m')
+YELLOW=$(printf '\033[33m')
+RESET=$(printf '\033[0m')
+
+staged=$(git diff --cached --name-only --diff-filter=ACM)
+[ -z "$staged" ] && exit 0
+
+fail=0
+
+# --- 1) Dosya adı kontrolü: .env, .env.production, .env.local ... ---
+# .env.example serbest, gerisi yasak.
+for file in $staged; do
+  base=$(basename "$file")
+  case "$base" in
+    .env.example|.env.sample|.env.template)
+      continue
+      ;;
+    .env|.env.*)
+      echo "${RED}✗ Ortam dosyası commit edilemez:${RESET} $file"
+      fail=1
+      ;;
+  esac
+done
+
+# --- 2) İçerik kontrolü: başka dosyalara yapıştırılmış secret'lar ---
+# Sadece eklenen satırlara bakılır.
+for file in $staged; do
+  case "$file" in
+    *.env.example|*/.env.example|.githooks/*|*.md) continue ;;
+  esac
+
+  added=$(git diff --cached -U0 -- "$file" | grep '^+' | grep -v '^+++')
+  [ -z "$added" ] && continue
+
+  # Firebase/Google private key
+  if printf '%s' "$added" | grep -q "BEGIN PRIVATE KEY"; then
+    echo "${RED}✗ Private key tespit edildi:${RESET} $file"
+    fail=1
+  fi
+
+  # Google API anahtarı (AIza...)
+  if printf '%s' "$added" | grep -Eq "AIza[0-9A-Za-z_-]{30,}"; then
+    echo "${RED}✗ Google API anahtarı tespit edildi:${RESET} $file"
+    fail=1
+  fi
+
+  # Şifre içeren bağlantı adresi.
+  # ${VAR} / <PLACEHOLDER> gibi yer tutucular gerçek secret değildir; karakter
+  # sınıfları $ { } < > işaretlerini dışladığı için bunlar eşleşmez.
+  if printf '%s' "$added" | grep -Eq '(postgres|postgresql|mysql|mongodb)://[^:'"'"'"[:space:]${}<>/]+:[^@'"'"'"[:space:]${}<>]+@'; then
+    echo "${RED}✗ Şifreli veritabanı bağlantı adresi tespit edildi:${RESET} $file"
+    fail=1
+  fi
+
+  # Doldurulmuş JWT_SECRET / ADMIN_PASSWORD gibi atamalar
+  if printf '%s' "$added" | grep -Eq "^\+.*(JWT_SECRET|JWT_REFRESH_SECRET|ADMIN_PASSWORD|CLIENT_SECRET|FIREBASE_PRIVATE_KEY)[[:space:]]*=[[:space:]]*['\"]?[A-Za-z0-9+/_-]{12,}"; then
+    echo "${RED}✗ Secret ataması tespit edildi:${RESET} $file"
+    fail=1
+  fi
+done
+
+if [ "$fail" -ne 0 ]; then
+  echo ""
+  echo "${YELLOW}Commit durduruldu.${RESET}"
+  echo "Dosyayı index'ten çıkarmak için:  git restore --staged <dosya>"
+  echo "Yanlış alarm olduğuna eminsen:    git commit --no-verify"
+  exit 1
+fi
+
+exit 0

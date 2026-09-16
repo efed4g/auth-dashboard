@@ -1,15 +1,19 @@
 # backend/Dockerfile
-FROM node:18-alpine
+FROM node:20-alpine
 
-# Çalışma dizinini ayarla
 WORKDIR /app
 
-# Paket dosyalarını kopyala ve kur
-COPY package*.json ./
-RUN npm install
+# bcrypt native derleme gerektirebilir.
+RUN apk add --no-cache --virtual .build-deps python3 make g++
 
-# Tüm kodları kopyala
+# Bağımlılıklar önce kopyalanır: kod değiştiğinde bu katman cache'ten gelir.
+COPY package.json yarn.lock ./
+RUN yarn install --frozen-lockfile --production=false && apk del .build-deps
+
 COPY . .
 
-# Konteyner ayağa kalkarken önce veritabanı tablolarını oluştur, sonra sunucuyu başlat
-CMD npx sequelize-cli db:migrate && npm run dev
+ENV NODE_ENV=production
+EXPOSE 4000
+
+# Tablolar migration ile oluşturulur, ardından sunucu başlar.
+CMD ["sh", "-c", "yarn migrate && yarn start"]
