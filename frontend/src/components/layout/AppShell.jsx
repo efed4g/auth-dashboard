@@ -6,6 +6,16 @@ import { useLogoutMutation, useLogoutAllMutation } from '../../features/auth/aut
 import Button from '../ui/Button';
 import Avatar from '../ui/Avatar';
 
+/**
+ * Oturum açmış kullanıcının gördüğü ortak çerçeve: üst menü, hesap menüsü ve
+ * sayfa içeriğinin yerleştiği alan.
+ *
+ * Rota seviyesinde sarmalayıcı olarak kullanılıyor (bkz. App.jsx), böylece
+ * menü her sayfada ayrı ayrı çağrılmıyor ve sayfalar arasında geçerken
+ * yeniden kurulmuyor.
+ */
+
+// NavLink, aktif bağlantıyı kendisi işaretliyor; sınıfı buna göre üretiyoruz.
 const navLinkClass = ({ isActive }) =>
   'rounded-lg px-3 py-1.5 text-sm font-medium transition ' +
   (isActive ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:bg-slate-100');
@@ -17,12 +27,20 @@ export default function AppShell() {
   const [logoutAll, { isLoading: loggingOutAll }] = useLogoutAllMutation();
   const [menuOpen, setMenuOpen] = useState(false);
 
+  /**
+   * Çıkış işlemi.
+   *
+   * @param {boolean} everywhere true ise bütün cihazlardaki oturumlar kapanır
+   *
+   * Yönlendirme finally içinde: sunucuya ulaşılamasa bile kullanıcıyı
+   * uygulamanın içinde bırakmak yanlış olurdu. Kullanıcı çıkmak istediğini
+   * belirtmiş, isteğin sonucu ne olursa olsun arayüzde oturum sonlandırılıyor.
+   */
   const handleLogout = async (everywhere) => {
     setMenuOpen(false);
     try {
       await (everywhere ? logoutAll() : logout()).unwrap();
     } finally {
-      // İstek başarısız olsa bile istemci tarafında oturum bırakılır.
       navigate('/login', { replace: true });
     }
   };
@@ -37,7 +55,9 @@ export default function AppShell() {
 
           <nav className="flex items-center gap-1">
             <NavLink to="/dashboard" className={navLinkClass}>Dashboard</NavLink>
-            {/* Erişimin asıl kontrolü backend'de; bu yalnızca arayüz kolaylığı. */}
+            {/* Menüyü gizlemek bir güvenlik önlemi değil, sadece kullanıcıya
+                erişemeyeceği bir bağlantı göstermemek. Adres elle yazılsa bile
+                hem ProtectedRoute hem de backend devreye giriyor. */}
             {user?.role === 'admin' && (
               <NavLink to="/admin" className={navLinkClass}>Yönetim</NavLink>
             )}

@@ -1,3 +1,10 @@
+/**
+ * Ortak buton bileşeni.
+ *
+ * loading durumu ayrı bir prop: hem dönen simgeyi gösteriyor hem de butonu
+ * devre dışı bırakıyor. Bu ikisini her çağrı yerinde elle yapmak, birinin
+ * unutulup formun iki kez gönderilmesine yol açardı.
+ */
 const VARIANTS = {
   primary: 'bg-brand-600 text-white hover:bg-brand-700 focus-visible:outline-brand-600',
   secondary: 'bg-white text-slate-700 ring-1 ring-inset ring-slate-300 hover:bg-slate-50',
@@ -23,7 +30,10 @@ export default function Button({
   return (
     <button
       className={`${base} ${VARIANTS[variant]} ${className}`}
+      // loading sırasında da devre dışı: çift gönderimi engelliyor.
       disabled={disabled || loading}
+      // Kalan props aktarılıyor ki type, onClick gibi standart öznitelikler
+      // bileşende tek tek tanımlanmak zorunda kalmasın.
       {...props}
     >
       {loading && (

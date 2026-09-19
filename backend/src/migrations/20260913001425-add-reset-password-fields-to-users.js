@@ -1,5 +1,12 @@
 'use strict';
 
+/**
+ * Şifre sıfırlama akışı için gereken alanlar.
+ *
+ * Süre alanı (expires) ayrı tutuluyor: token'ın içine süre gömmek yerine
+ * veritabanında saklamak, sorguda doğrudan filtrelemeye izin veriyor.
+ * Token yine özet halinde saklanıyor.
+ */
 module.exports = {
   async up(queryInterface, Sequelize) {
     await queryInterface.addColumn('users', 'reset_password_token', {

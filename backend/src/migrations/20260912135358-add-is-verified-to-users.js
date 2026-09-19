@@ -1,6 +1,13 @@
 'use strict';
 
-/** @type {import('sequelize-cli').Migration} */
+/**
+ * E-posta doğrulama akışı için gereken alanlar.
+ *
+ * defaultValue: false — mevcut kayıtlar da doğrulanmamış sayılıyor.
+ * verification_token'da token'ın kendisi değil SHA-256 özeti tutuluyor.
+ *
+ * @type {import('sequelize-cli').Migration}
+ */
 module.exports = {
   async up(queryInterface, Sequelize) {
     await queryInterface.addColumn('users', 'is_verified', {

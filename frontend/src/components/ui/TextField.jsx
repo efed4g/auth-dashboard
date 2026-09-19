@@ -1,6 +1,15 @@
 import { useId } from 'react';
 
+/**
+ * Etiketli form alanı.
+ *
+ * Etiket, ipucu metni ve hata durumunu bir arada yönetiyor; formlarda aynı
+ * yapıyı tekrar tekrar yazmamak için.
+ */
 export default function TextField({ label, hint, error, className = '', ...props }) {
+  // useId, aynı sayfada birden fazla alan olduğunda çakışmayan kimlik üretiyor.
+  // label ile input'un eşleşmesi için gerekli: etikete tıklayınca alan
+  // odaklanıyor ve ekran okuyucu ikisini birlikte okuyor.
   const id = useId();
 
   return (
@@ -10,6 +19,8 @@ export default function TextField({ label, hint, error, className = '', ...props
       </label>
       <input
         id={id}
+        // Hata durumu yalnızca renkle değil aria ile de bildiriliyor;
+        // renk körü kullanıcılar ve ekran okuyucular için gerekli.
         aria-invalid={Boolean(error) || undefined}
         aria-describedby={hint ? `${id}-hint` : undefined}
         className={

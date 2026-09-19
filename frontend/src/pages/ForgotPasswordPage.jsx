@@ -7,6 +7,13 @@ import TextField from '../components/ui/TextField';
 import Button from '../components/ui/Button';
 import Alert from '../components/ui/Alert';
 
+/**
+ * Şifre sıfırlama isteği sayfası.
+ *
+ * Sayfanın anlatım dili, backend'in hesap varlığını gizleme kararına göre
+ * kuruldu: kullanıcıya "gönderildi" değil "kayıtlıysa gönderildi" deniyor
+ * ve Google hesapları için açıklama sabit metin olarak herkese gösteriliyor.
+ */
 export default function ForgotPasswordPage() {
   const [forgotPassword, { isLoading }] = useForgotPasswordMutation();
   const [email, setEmail] = useState('');
@@ -53,7 +60,9 @@ export default function ForgotPasswordPage() {
         <Button type="submit" loading={isLoading}>Bağlantı gönder</Button>
       </form>
 
-      {/* Hesabın varlığını sızdırmamak için herkese gösterilen sabit bilgi. */}
+      {/* Bu açıklama koşula bağlı değil, herkese gösteriliyor. "Bu hesap
+          Google ile açılmış" uyarısını yalnızca ilgili kullanıcıya göstermek,
+          adresin kayıtlı olduğunu ve hangi yöntemle açıldığını ele verirdi. */}
       <p className="mt-5 text-xs leading-relaxed text-slate-500">
         Hesabını Google ile açtıysan şifren yoktur; sıfırlama bağlantısı gelmez.
         Google ile giriş yap, ardından “Hesap güvenliği” bölümünden şifre belirleyebilirsin.

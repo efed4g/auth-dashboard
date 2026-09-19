@@ -7,8 +7,19 @@ import TextField from '../components/ui/TextField';
 import Button from '../components/ui/Button';
 import Alert from '../components/ui/Alert';
 
+/**
+ * Hesap güvenliği sayfası.
+ *
+ * Tek bir form iki işi görüyor: Google ile açılmış şifresiz hesaba şifre
+ * eklemek ve mevcut şifreyi değiştirmek. Hangi durumda olunduğu kullanıcının
+ * hasPassword bilgisinden anlaşılıyor; iki ayrı sayfa yapmak yerine aynı
+ * formu uyarlamak, arka uçta da tek bir uçla karşılanıyor.
+ */
+
 const MIN_PASSWORD_LENGTH = 8;
 
+// Form başarıyla gönderildikten sonra sıfırlamak için sabit başlangıç değeri.
+// Şifre alanlarının ekranda dolu kalmaması gerekiyor.
 const EMPTY_FORM = { currentPassword: '', newPassword: '', newPasswordConfirm: '' };
 
 export default function SecurityPage() {
@@ -19,7 +30,9 @@ export default function SecurityPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  // Şifresi olmayan (yalnızca Google ile açılmış) hesapta mevcut şifre sorulmaz.
+  // Formun hangi biçimde görüneceğini belirleyen tek bilgi. Sunucudan geliyor;
+  // şifre hash'i istemciye hiç gönderilmediği için varlığı boolean olarak
+  // taşınıyor (bkz. User.toPublicJSON).
   const hasPassword = user?.hasPassword;
 
   const handleChange = (event) => {
@@ -38,6 +51,8 @@ export default function SecurityPage() {
     }
 
     try {
+      // Mevcut şifre yalnızca gerçekten varsa gönderiliyor. Şifresiz hesapta
+      // boş bir alan göndermek sunucuda gereksiz doğrulama hatası üretirdi.
       const response = await setPassword({
         ...(hasPassword ? { currentPassword: form.currentPassword } : {}),
         newPassword: form.newPassword,

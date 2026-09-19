@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react';
 
 /**
- * Profil fotoğrafı, yoksa baş harf.
- * Google avatar adresleri zaman zaman 403 dönebildiği için yükleme hatasında
- * da baş harfe düşer.
+ * Kullanıcı avatarı: profil fotoğrafı, yoksa adının baş harfi.
+ *
+ * Fotoğraf her zaman yüklenmiyor. Google'ın avatar adresleri zaman zaman 403
+ * dönebiliyor; bu durumda kırık resim simgesi göstermek yerine baş harfe
+ * düşülüyor. Bu yüzden basit bir img yerine durum tutan bir bileşen gerekti.
  */
 export default function Avatar({ user, size = 'size-7', className = '' }) {
   const [failed, setFailed] = useState(false);
 
-  // Kullanıcı değişince (ör. hesap değiştirme) hata durumu sıfırlanmalı.
+  // Fotoğraf adresi değiştiğinde hata durumu sıfırlanmalı; aksi halde bir kez
+  // başarısız olan kullanıcıdan sonra geçilen hesapta da baş harf görünürdü.
   useEffect(() => setFailed(false), [user?.photoUrl]);
 
   const initial = (user?.displayName || user?.email)?.[0]?.toUpperCase() ?? '?';
@@ -17,8 +20,10 @@ export default function Avatar({ user, size = 'size-7', className = '' }) {
     return (
       <img
         src={user.photoUrl}
+        // alt="": avatar dekoratif, yanında zaten kullanıcının adı yazıyor.
+        // Metin eklemek ekran okuyucuda aynı bilgiyi iki kez okuturdu.
         alt=""
-        // Google, referrer gönderen isteklere 403 dönebiliyor.
+        // Google, referrer başlığı gönderen isteklere 403 dönebiliyor.
         referrerPolicy="no-referrer"
         onError={() => setFailed(true)}
         className={`${size} shrink-0 rounded-full object-cover ${className}`}

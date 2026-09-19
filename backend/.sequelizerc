@@ -1,6 +1,11 @@
 const path = require('path');
 
-// sequelize-cli'nin src/ altındaki yapıyı bulması için.
+/**
+ * sequelize-cli varsayılan olarak proje kökünde models/, migrations/ gibi
+ * klasörler arıyor. Bu projede her şey src/ altında toplandığı için yolları
+ * burada bildiriyoruz; aksi halde CLI boş klasörler oluşturup kendi
+ * yapısını kurmaya çalışır.
+ */
 module.exports = {
   config: path.resolve(__dirname, 'src', 'config', 'config.js'),
   'models-path': path.resolve(__dirname, 'src', 'models'),

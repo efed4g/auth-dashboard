@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="tr">
 
 <head>
   <meta charset="utf-8" />
@@ -11,10 +11,11 @@
 <body>
   <noscript>Uygulamayı çalıştırmak için JavaScript'i etkinleştirin.</noscript>
 
-  <!-- React'in ekrana basılacağı ana div BURASI -->
+  <!-- React uygulamasının bağlandığı kök eleman -->
   <div id="root"></div>
 
-  <!-- Vite için eklediğimiz script -->
+  <!-- Vite modülü doğrudan kaynak dosyadan yüklüyor; derleme adımında
+       bu satırı paketlenmiş dosyayla kendisi değiştiriyor. -->
   <script type="module" src="/src/main.jsx"></script>
 </body>
 

@@ -4,6 +4,15 @@ import { getErrorMessage } from '../lib/errors';
 import Alert from '../components/ui/Alert';
 import FullPageSpinner from '../components/ui/FullPageSpinner';
 
+/**
+ * Panel sayfası.
+ *
+ * İçeriğin tamamı backend'den geliyor; sayfa yalnızca gelen veriyi çiziyor.
+ * Rol ayrımı da burada değil sunucuda yapılıyor (aşağıdaki nota bakınız).
+ */
+
+// Tekrar eden kutu yapısı küçük bir bileşene alındı; aynı sayfada hem kullanıcı
+// hem yönetici bölümünde kullanılıyor.
 function StatCard({ label, value }) {
   return (
     <div className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-900/5">
@@ -36,7 +45,10 @@ export default function DashboardPage() {
         ))}
       </dl>
 
-      {/* Bu blok backend'den yalnızca admin'e gelir; user'a gizlenmez, gönderilmez. */}
+      {/* Buradaki koşul bir yetki kontrolü değil, sadece "veri geldi mi"
+          kontrolü. Yönetici özeti normal kullanıcıya gönderilip CSS ile
+          gizlenmiyor; cevabın içinde hiç yer almıyor. Gizleme yaklaşımı
+          veriyi ağ sekmesinden okunabilir bırakırdı. */}
       {data.admin && (
         <section className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-900/5">
           <div className="flex items-center justify-between gap-4">

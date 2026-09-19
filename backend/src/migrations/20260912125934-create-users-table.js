@@ -1,8 +1,15 @@
 'use strict';
 
+/**
+ * İlk migration: users tablosunun temel hali.
+ *
+ * Şema baştan eksiksiz tasarlanmadı; proje ilerledikçe (doğrulama, şifre
+ * sıfırlama, Google girişi) ayrı migration'larla genişletildi. Tabloyu elle
+ * değiştirmek yerine her adımı migration olarak tutmak, şemayı sıfırdan
+ * tekrar kurulabilir hale getiriyor ve neyin ne zaman eklendiği görünüyor.
+ */
 module.exports = {
   async up(queryInterface, Sequelize) {
-    // Tabloyu oluşturma işlemi
     await queryInterface.createTable('users', {
       id: {
         allowNull: false,
@@ -13,22 +20,26 @@ module.exports = {
       email: {
         type: Sequelize.STRING,
         allowNull: false,
-        unique: true // Aynı e-posta ile iki kişi kayıt olamaz
+        // Benzersizlik veritabanı seviyesinde tanımlı: uygulamadaki kontrol
+        // eşzamanlı iki kaydı kaçırabilir, kısıt kaçırmaz.
+        unique: true
       },
       password: {
         type: Sequelize.STRING,
-        allowNull: true // Google ile girenler için boş olabilir demiştik
+        // Google ile açılan hesaplarda şifre olmayacağı için null serbest.
+        allowNull: true
       },
       role: {
         type: Sequelize.STRING,
         allowNull: false,
-        defaultValue: 'user' // Varsayılan rol 'user' olarak atanıyor
+        // Yeni kayıtlar en düşük yetkiyle başlıyor.
+        defaultValue: 'user'
       }
     });
   },
 
+  // Geri alma adımı: migration'ın test edilebilir olması için up'ın tam tersi.
   async down(queryInterface, Sequelize) {
-    // İşlemi geri alırsak tabloyu sil
     await queryInterface.dropTable('users');
   }
 };

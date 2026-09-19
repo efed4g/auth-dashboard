@@ -8,6 +8,16 @@ import Button from '../components/ui/Button';
 import Alert from '../components/ui/Alert';
 import GoogleButton from '../components/GoogleButton';
 
+/**
+ * Kayıt sayfası.
+ *
+ * Kayıt sonrası oturum açılmıyor; kullanıcı e-posta doğrulaması yapana kadar
+ * giriş yapamıyor. Bu yüzden başka sayfaya yönlendirme yerine ekranda
+ * bilgilendirme mesajı gösteriliyor.
+ */
+
+// Backend'deki kuralla aynı değer. Burada tekrarlanmasının sebebi kullanıcıya
+// form gönderilmeden geri bildirim verebilmek; asıl kontrol yine sunucuda.
 const MIN_PASSWORD_LENGTH = 8;
 
 export default function RegisterPage() {
@@ -26,7 +36,8 @@ export default function RegisterPage() {
     setError('');
     setSuccess('');
 
-    // Hızlı geri bildirim için; asıl doğrulama backend'de.
+    // Şifre tekrarı yalnızca istemci tarafında kontrol ediliyor; sunucuya
+    // gönderilmesine gerek yok, bu bir yazım hatası kontrolü.
     if (form.password !== form.passwordConfirm) {
       setError('Şifreler eşleşmiyor.');
       return;
@@ -37,7 +48,11 @@ export default function RegisterPage() {
         email: form.email,
         password: form.password,
       }).unwrap();
+      // Mesaj sunucudan geliyor, burada sabit metin yazılmıyor: "şimdi ne
+      // yapılmalı" bilgisi akışı bilen tarafta kalsın.
       setSuccess(response.message);
+      // Form temizleniyor ki başarı mesajının altında dolu alanlar kalıp
+      // kullanıcı tekrar gönderdiğini sanmasın.
       setForm({ email: '', password: '', passwordConfirm: '' });
     } catch (err) {
       setError(getErrorMessage(err, 'Kayıt oluşturulamadı.'));

@@ -1,3 +1,10 @@
+/**
+ * Kimlik doğrulama sayfalarının ortak kart düzeni.
+ *
+ * Kayıt, şifremi unuttum ve şifre sıfırlama sayfaları aynı yerleşimi
+ * kullanıyor; başlık/içerik/alt bağlantı yapısını tek yerde toplamak,
+ * sayfalar arasında görünüm farkı oluşmasını engelliyor.
+ */
 export default function AuthCard({ title, subtitle, children, footer }) {
   return (
     <div className="flex min-h-full flex-col justify-center px-4 py-12 sm:px-6 lg:px-8">

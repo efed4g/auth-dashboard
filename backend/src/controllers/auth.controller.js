@@ -14,23 +14,62 @@ const {
 const sessionService = require('../services/session.service');
 const mailer = require('../services/mailer.service');
 
+/**
+ * Kimlik doğrulama uçlarının iş mantığı.
+ *
+ * Controller'ların görevi: girdiyi doğrulamak, iş kuralını uygulamak ve cevabı
+ * hazırlamak. Oturumun teknik kurulumu (token üretimi, cookie, veritabanı
+ * kaydı) session.service'e, doğrulama kuralları utils/validation'a bırakıldı.
+ *
+ * Hatalar res.status(...) ile değil ApiError fırlatılarak bildiriliyor;
+ * cevabın biçimini tek bir middleware belirlesin diye.
+ */
+
+// bcrypt maliyet katsayısı. 10 yaygın varsayılan ama donanım hızlandıkça
+// yetersiz kalıyor; 12, günümüz sunucusunda hash başına ~250 ms demek —
+// kullanıcı fark etmez, kaba kuvvet deneyen için ciddi bir maliyet.
 const BCRYPT_ROUNDS = 12;
+// Doğrulama bağlantısı 24 saat, sıfırlama 1 saat geçerli. Sıfırlamanın daha
+// kısa olmasının sebebi: ele geçirilmiş bir posta kutusunda daha tehlikeli.
 const VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000;
 const RESET_TTL_MS = 60 * 60 * 1000;
 
-// Kullanıcı bulunamadığında da compare çalıştırmak için: zamanlama farkını kapatır.
+// Kullanıcı bulunamadığında karşılaştırılacak sahte hash.
+// Kayıt yoksa hemen dönseydik cevap belirgin şekilde daha hızlı gelirdi ve
+// saldırgan bu süre farkından hangi e-postaların kayıtlı olduğunu çıkarabilirdi.
+// Sahte hash ile karşılaştırma yaparak iki durumu da aynı süreye yaklaştırıyoruz.
 const DUMMY_HASH = bcrypt.hashSync('timing-attack-placeholder', BCRYPT_ROUNDS);
 
-// GET /api/auth/csrf
+/**
+ * GET /api/auth/csrf
+ *
+ * Frontend'in durum değiştiren ilk isteğinden önce çağırdığı uç. Cookie zaten
+ * varsa yenisi üretilmiyor: her çağrıda token değiştirmek, aynı anda açık
+ * sekmelerin elindeki değeri geçersiz kılardı.
+ *
+ * @returns {{csrfToken: string}}
+ */
 async function getCsrfToken(req, res) {
   const csrfToken = req.cookies?.[tokenUtil.CSRF_COOKIE] || sessionService.issueCsrfToken(res);
   res.json({ csrfToken });
 }
 
-// POST /api/auth/register
+/**
+ * POST /api/auth/register
+ * Gövde: { email, password }
+ *
+ * Yeni hesap açar ve doğrulama bağlantısı gönderir. Kayıt sonrası oturum
+ * AÇILMIYOR: hesap e-posta doğrulanana kadar giriş yapamaz. Aksi halde
+ * başkasının adresiyle hesap açıp o adresi kullanıyormuş gibi görünmek mümkün olurdu.
+ *
+ * @returns 201 ve bilgilendirme mesajı
+ */
 async function register(req, res) {
   const { email, password } = assertValidCredentials(req.body || {});
 
+  // Bu kontrol kullanıcıya anlaşılır bir mesaj vermek için. Yarış durumunda
+  // iki istek birden geçebilir; asıl güvence tablodaki unique kısıtı, o da
+  // 409'a dönüştürülüyor (bkz. error.middleware.js).
   const existing = await User.findOne({ where: { email } });
   if (existing) {
     throw ApiError.conflict('Bu e-posta adresi zaten kayıtlı.');
@@ -42,8 +81,11 @@ async function register(req, res) {
   await User.create({
     email,
     password: hashedPassword,
+    // Rol istekten alınmıyor. Alınsaydı gövdeye role: 'admin' yazan herkes
+    // yönetici olurdu; yetki yükseltme ayrı ve bilinçli bir işlem olmalı.
     role: 'user',
     isVerified: false,
+    // Token'ın ham hali e-postaya, yalnızca özeti veritabanına gidiyor.
     verificationToken: verification.hash,
     verificationTokenExpires: new Date(Date.now() + VERIFICATION_TTL_MS),
   });
@@ -56,8 +98,19 @@ async function register(req, res) {
   });
 }
 
-// GET /api/auth/verify-email?token=...
+/**
+ * GET /api/auth/verify-email?token=...
+ *
+ * Kullanıcı bu adrese e-postadaki bağlantıdan geliyor, yani tarayıcı doğrudan
+ * gezinme yapıyor. Bu yüzden JSON değil yönlendirme dönülüyor; sonuç frontend'e
+ * query parametresiyle bildiriliyor ve orada mesaja çevriliyor.
+ *
+ * Geçersiz token ile süresi dolmuş token aynı cevabı alıyor: ayırmak,
+ * saldırgana hangi token'ların bir zamanlar geçerli olduğunu söylerdi.
+ */
 async function verifyEmail(req, res) {
+  // Query parametresi dizi de olabilir (?token=a&token=b); tip kontrolü
+  // yapılmazsa hashToken'a nesne gidip beklenmedik hata üretir.
   const rawToken = typeof req.query.token === 'string' ? req.query.token : '';
   const redirect = (status) => res.redirect(`${env.frontendUrl}/login?verified=${status}`);
 
@@ -65,6 +118,10 @@ async function verifyEmail(req, res) {
     return redirect('invalid');
   }
 
+  // Sorgu doğrudan özet üzerinden yapılıyor. Kullanıcıyı bulup sonra
+  // karşılaştırmak yerine tek sorguda eşleştirmek hem daha basit hem de
+  // süre kontrolünü aynı yerde tutuyor. withSecrets gerekli, çünkü
+  // verificationToken varsayılan kapsamda seçilmiyor.
   const user = await User.scope('withSecrets').findOne({
     where: {
       verificationToken: tokenUtil.hashToken(rawToken),
@@ -76,6 +133,8 @@ async function verifyEmail(req, res) {
     return redirect('invalid');
   }
 
+  // Token kullanıldıktan sonra temizleniyor: tek kullanımlık olması,
+  // bağlantının e-posta kutusundan ele geçirilmesi durumunda önemli.
   await user.update({
     isVerified: true,
     verificationToken: null,
@@ -86,21 +145,38 @@ async function verifyEmail(req, res) {
   return redirect('success');
 }
 
-// POST /api/auth/login
+/**
+ * POST /api/auth/login
+ * Gövde: { email, password }
+ *
+ * Başarılı olursa access + refresh cookie'leri yazılır. Cevap gövdesinde
+ * token YOK; istemcinin token'a erişmesine gerek olmadığı gibi, erişebilmesi
+ * httpOnly tercihini boşa çıkarırdı.
+ *
+ * @returns {{message: string, user: object}}
+ */
 async function login(req, res) {
-  // Girişte şifre politikası uygulanmaz, sadece format kontrolü.
+  // Girişte şifre politikası (uzunluk vb.) uygulanmıyor, yalnızca alanın dolu
+  // olduğuna bakılıyor. Kurallar sonradan sıkılaştırıldığında eski şifreli
+  // kullanıcıların kilitlenmemesi için.
   const { email, password } = assertValidCredentials(req.body || {}, {
     checkPasswordStrength: false,
   });
 
   const user = await User.scope('withSecrets').findOne({ where: { email } });
+  // compare, kullanıcı bulunamasa bile çalıştırılıyor (DUMMY_HASH ile):
+  // cevap süresinin e-postanın kayıtlı olup olmadığını ele vermemesi için.
   const passwordMatches = await bcrypt.compare(password, user?.password || DUMMY_HASH);
 
+  // Üç durum da aynı mesajı alıyor: kullanıcı yok, şifresi yok (Google hesabı),
+  // şifre yanlış. Ayırmak, geçerli e-posta adreslerinin listelenmesine yarardı.
   if (!user || !user.password || !passwordMatches) {
     throw ApiError.unauthorized('E-posta veya şifre hatalı.');
   }
 
-  // Doğrulama durumu ancak şifre doğrulandıktan sonra açıklanır.
+  // Doğrulama kontrolü bilerek şifre kontrolünden SONRA. Önce yapılsaydı,
+  // şifreyi bilmeyen biri de "bu adres kayıtlı ama doğrulanmamış" bilgisini
+  // öğrenebilirdi.
   if (!user.isVerified) {
     throw ApiError.forbidden(
       'Giriş yapmadan önce e-posta adresinizi doğrulayın.',
@@ -116,8 +192,14 @@ async function login(req, res) {
 
 /**
  * POST /api/auth/google
- * Firebase ID token'ı burada doğrulanır; oturum kendi httpOnly cookie'lerimizle
- * kurulur, Firebase token'ı frontend'de saklanmaz.
+ * Gövde: { idToken }  — tarayıcının Firebase'den aldığı ID token
+ *
+ * Google ile giriş ve kayıt aynı uçtan yürüyor: hesap yoksa açılıyor, varsa
+ * bağlanıyor. Firebase token'ı yalnızca kimliği kanıtlamak için kullanılıyor;
+ * oturum bizim kendi httpOnly cookie'lerimizle kuruluyor ve Firebase token'ı
+ * istemcide saklanmıyor. Böylece oturum yönetimi tek bir mekanizmada kalıyor.
+ *
+ * @returns {{message: string, user: object}}
  */
 async function loginWithGoogle(req, res) {
   if (!firebase.isEnabled()) {
@@ -129,36 +211,50 @@ async function loginWithGoogle(req, res) {
     throw ApiError.badRequest('ID token eksik.');
   }
 
+  // Token'ın doğrulanması şart: istemciden gelen hiçbir veri kanıt değil.
+  // Doğrulama yapılmasaydı herkes istediği e-postayla uydurma token gönderip
+  // başkasının hesabına girebilirdi.
   let decoded;
   try {
     decoded = await firebase.verifyIdToken(idToken);
   } catch (err) {
+    // Hatanın sebebi loglanıyor ama kullanıcıya genel mesaj dönüyor:
+    // "imza geçersiz" ile "süresi dolmuş" ayrımı saldırgana bilgi verir.
     logger.warn('Firebase ID token doğrulanamadı.', { reason: err.message });
     throw ApiError.unauthorized('Google doğrulaması başarısız.');
   }
 
   const email = assertValidEmail(decoded.email);
 
-  // Doğrulanmamış e-posta, aynı adresli mevcut hesabı ele geçirmek için kullanılabilir.
+  // Bu kontrol hesap ele geçirmeye karşı kritik. Google'da doğrulanmamış bir
+  // adresle hesap açmak mümkün; bu kontrol olmasaydı saldırgan kurbanın
+  // e-postasıyla Google hesabı açıp aşağıdaki eşleştirme adımında sistemdeki
+  // gerçek hesaba bağlanabilirdi.
   if (!decoded.email_verified) {
     throw ApiError.forbidden('Google hesabınızın e-posta adresi doğrulanmamış.');
   }
 
-  // Profil bilgisi token'dan gelir ve her girişte tazelenir; kullanıcı Google
-  // tarafında adını/fotoğrafını değiştirirse burası da güncellenir.
+  // Ad ve fotoğraf her girişte tazeleniyor; kullanıcı Google tarafında
+  // profilini değiştirdiğinde burada da güncel kalsın.
   const profile = {
     displayName: decoded.name || null,
     photoUrl: decoded.picture || null,
   };
 
-  // Hangi claim'lerin geldiğini görmek için (yalnızca alan adları, değerler değil).
+  // Hata ayıklarken hangi claim'lerin geldiğini görmek gerekebiliyor. Yalnızca
+  // alan ADLARI loglanıyor, değerler değil: token içeriği kişisel veri.
   logger.debug('Firebase token claim\'leri', {
     claims: Object.keys(decoded).join(','),
     hasName: Boolean(decoded.name),
     hasPicture: Boolean(decoded.picture),
   });
 
-  // Önce sağlayıcı kimliği, sonra e-posta: aynı e-posta için ikinci kayıt oluşmaz.
+  // Hesap eşleştirme sırası önemli:
+  //  1) googleUid — kullanıcı daha önce Google ile girmiş. E-postasını
+  //     değiştirmiş olsa bile aynı hesaba bağlanır.
+  //  2) e-posta — aynı adresle normal kayıt var; ikinci bir hesap açmak
+  //     yerine mevcut hesaba Google kimliği bağlanır.
+  //  3) hiçbiri — ilk kez geliyor, yeni kayıt açılır.
   let user = await User.findOne({ where: { googleUid: decoded.uid } });
 
   if (user) {
@@ -166,11 +262,15 @@ async function loginWithGoogle(req, res) {
   } else {
     user = await User.findOne({ where: { email } });
     if (user) {
+      // isVerified true yapılıyor: adresin sahibi olduğunu Google zaten
+      // doğruladı, kullanıcıdan ikinci kez doğrulama istemek gereksiz.
       await user.update({ googleUid: decoded.uid, isVerified: true, ...profile });
       logger.info('Mevcut hesaba Google kimliği bağlandı.', { userId: user.id });
     } else {
       user = await User.create({
         email,
+        // Şifresiz hesap. Kullanıcı isterse sonradan "Hesap güvenliği"
+        // sayfasından şifre belirleyip ikinci giriş yolunu açabiliyor.
         password: null,
         role: 'user',
         googleUid: decoded.uid,
@@ -185,7 +285,13 @@ async function loginWithGoogle(req, res) {
   res.json({ message: 'Google ile giriş başarılı.', user: user.toPublicJSON() });
 }
 
-// POST /api/auth/refresh
+/**
+ * POST /api/auth/refresh
+ *
+ * Access token'ın süresi dolduğunda frontend bunu kendiliğinden çağırıyor,
+ * kullanıcı bir şey fark etmiyor. Asıl iş session.service'teki rotasyon
+ * mantığında; burada yalnızca cookie okunuyor ve hata durumu toparlanıyor.
+ */
 async function refresh(req, res) {
   const presentedToken = req.cookies?.[tokenUtil.REFRESH_COOKIE];
 
@@ -193,7 +299,10 @@ async function refresh(req, res) {
     const user = await sessionService.rotateSession(res, presentedToken);
     res.json({ message: 'Oturum yenilendi.', user: user.toPublicJSON() });
   } catch (err) {
-    // Oturum yenilenemiyorsa istemcide geçersiz cookie kalmasın.
+    // Yenileme başarısızsa eldeki cookie artık işe yaramıyor demektir.
+    // Temizlenmezse istemci her istekte aynı ölü token'la yeniden deneyip
+    // sonsuz bir 401 döngüsüne girer. 500 durumunda temizlemiyoruz: sorun
+    // geçici bir sunucu hatası olabilir, kullanıcıyı oturumdan atmaya gerek yok.
     if (err instanceof ApiError && err.statusCode !== 500) {
       tokenUtil.clearAuthCookies(res);
     }
@@ -201,7 +310,13 @@ async function refresh(req, res) {
   }
 }
 
-// POST /api/auth/logout
+/**
+ * POST /api/auth/logout
+ *
+ * Yalnızca bu cihazın oturumunu kapatır: refresh token veritabanında iptal
+ * edilir, cookie'ler silinir. Sunucu tarafında iptal etmek şart; sadece
+ * cookie silmek, kopyalanmış bir token'ın geçerli kalmasına izin verirdi.
+ */
 async function logout(req, res) {
   await sessionService.revokeSession(req.cookies?.[tokenUtil.REFRESH_COOKIE]);
   tokenUtil.clearAuthCookies(res);
@@ -210,8 +325,14 @@ async function logout(req, res) {
 
 /**
  * POST /api/auth/logout-all
- * Access token süresi dolmuşken de çalışmalı; bu yüzden geçerli bir refresh
- * token da kimlik kanıtı olarak kabul edilir.
+ *
+ * Kullanıcının bütün cihazlardaki oturumlarını kapatır. Şifresinin ele
+ * geçirildiğinden şüphelenen biri için gerekli.
+ *
+ * Rotada requireAuth yok, kimlik burada iki kaynaktan çözülüyor: varsa access
+ * token'dan, yoksa refresh token'dan. Sebebi şu: bu özelliğe tam da access
+ * token'ın süresi dolduğu durumda ihtiyaç duyuluyor ve o anda kullanıcıyı
+ * "önce giriş yap" diye geri çevirmek özelliği işlevsiz kılardı.
  */
 async function logoutAll(req, res) {
   let userId = req.user?.id;
@@ -222,12 +343,15 @@ async function logoutAll(req, res) {
       try {
         userId = Number(tokenUtil.verifyRefreshToken(presentedToken).sub);
       } catch {
+        // Geçersiz token sessizce yok sayılıyor; akış aşağıdaki 401'e düşüyor.
         userId = undefined;
       }
     }
   }
 
   if (!userId) {
+    // Kimlik çözülemese bile cookie'ler temizleniyor: kullanıcı zaten
+    // çıkmak istiyor, elindeki bozuk oturumu bırakmanın anlamı yok.
     tokenUtil.clearAuthCookies(res);
     throw ApiError.unauthorized('Giriş yapmalısınız.');
   }
@@ -239,13 +363,24 @@ async function logoutAll(req, res) {
   res.json({ message: 'Tüm cihazlardan çıkış yapıldı.' });
 }
 
-// POST /api/auth/forgot-password
+/**
+ * POST /api/auth/forgot-password
+ * Gövde: { email }
+ *
+ * Adres kayıtlıysa sıfırlama bağlantısı gönderir. Cevap her durumda aynı:
+ * "kayıtlı değil" demek, bu ucun e-posta adresi doğrulama aracı olarak
+ * kullanılmasına izin verirdi. Kullanıcı deneyimi açısından biraz belirsiz
+ * ama hesap varlığını gizlemek daha öncelikli.
+ */
 async function forgotPassword(req, res) {
   const email = assertValidEmail((req.body || {}).email);
-  // withSecrets gerekli: varsayılan scope password alanını seçmiyor.
+  // withSecrets gerekli: password alanı varsayılan kapsamda seçilmiyor ve
+  // aşağıda hesabın şifresi olup olmadığına bakılması gerekiyor.
   const user = await User.scope('withSecrets').findOne({ where: { email } });
 
-  // Hesabın varlığı sızdırılmaz; cevap her durumda aynı.
+  // Şifresi olmayan (yalnızca Google ile açılmış) hesaba sıfırlama bağlantısı
+  // gönderilmiyor: sıfırlanacak bir şifre yok. Kullanıcıya bu durum da
+  // söylenmiyor, aynı gerekçeyle.
   if (user && user.password) {
     const reset = tokenUtil.generateOpaqueToken();
     await user.update({
@@ -261,12 +396,22 @@ async function forgotPassword(req, res) {
   });
 }
 
-// POST /api/auth/reset-password
+/**
+ * POST /api/auth/reset-password
+ * Gövde: { token, newPassword }
+ *
+ * E-postadaki tek kullanımlık token ile şifreyi değiştirir. İşlem sonunda
+ * kullanıcının bütün oturumları kapatılıyor: şifre sıfırlama genelde "hesabım
+ * ele geçirildi" şüphesiyle yapılıyor ve saldırganın açık oturumu devam
+ * ederse sıfırlamanın bir anlamı kalmıyor.
+ */
 async function resetPassword(req, res) {
   const { token, newPassword } = req.body || {};
   if (!token || typeof token !== 'string') {
     throw ApiError.badRequest('Sıfırlama bağlantısı geçersiz.');
   }
+  // Yeni şifre için politika uygulanıyor (girişten farkı bu): kullanıcı zaten
+  // yeni bir değer belirliyor, kuralların burada geçerli olması gerekiyor.
   assertValidPassword(newPassword);
 
   const user = await User.scope('withSecrets').findOne({
@@ -282,11 +427,11 @@ async function resetPassword(req, res) {
 
   await user.update({
     password: await bcrypt.hash(newPassword, BCRYPT_ROUNDS),
+    // Token tek kullanımlık: aynı bağlantı ikinci kez çalışmamalı.
     resetPasswordToken: null,
     resetPasswordExpires: null,
   });
 
-  // Şifre değişti: çalınmış olabilecek tüm oturumlar düşürülür.
   await sessionService.revokeAllForUser(user.id);
   tokenUtil.clearAuthCookies(res);
   logger.info('Şifre sıfırlandı, tüm oturumlar kapatıldı.', { userId: user.id });
@@ -296,10 +441,15 @@ async function resetPassword(req, res) {
 
 /**
  * POST /api/auth/set-password
+ * Gövde: { currentPassword?, newPassword }
  *
- * Google ile açılmış hesaplara şifre ekler, şifresi olanlarda değiştirir.
- * Şifre zaten varsa mevcut şifre zorunludur: aksi halde ele geçirilmiş bir
- * access token'la şifre değiştirilip hesap tamamen devralınabilirdi.
+ * İki işi birden görüyor: Google ile açılmış şifresiz hesaba şifre eklemek ve
+ * mevcut şifreyi değiştirmek. Hangi durumda olduğumuzu kullanıcının kendi
+ * kaydından anlıyoruz, istemcinin söylediğine göre değil.
+ *
+ * Şifre zaten varsa mevcut şifre zorunlu. Sadece oturum açık olmasına
+ * güvenilseydi, ele geçirilmiş bir access token'la şifre değiştirilip hesabın
+ * tamamı devralınabilirdi; mevcut şifre bu adımda ikinci bir kanıt oluyor.
  */
 async function setPassword(req, res) {
   const { currentPassword, newPassword } = req.body || {};
@@ -329,8 +479,9 @@ async function setPassword(req, res) {
 
   await user.update({ password: await bcrypt.hash(newPassword, BCRYPT_ROUNDS) });
 
-  // Kimlik bilgisi değişti: diğer cihazlardaki oturumlar düşürülür, bu cihaz
-  // için yeni bir oturum açılır (kullanıcı kendini dışarı atmasın).
+  // Kimlik bilgisi değiştiği için diğer cihazlardaki oturumlar kapatılıyor.
+  // Hemen ardından bu cihaz için yeni oturum açılıyor: aksi halde kullanıcı
+  // kendi şifresini değiştirdiği için giriş ekranına atılırdı.
   await sessionService.revokeAllForUser(user.id);
   await sessionService.createSession(res, user);
 
@@ -346,7 +497,16 @@ async function setPassword(req, res) {
   });
 }
 
-// GET /api/auth/me
+/**
+ * GET /api/auth/me
+ *
+ * Frontend açılışta bunu çağırıp oturumun geçerli olup olmadığını öğreniyor.
+ * Kullanıcı bilgisi token'dan değil veritabanından okunuyor: rol ya da profil
+ * token üretildikten sonra değişmiş olabilir.
+ *
+ * Token geçerli ama kayıt yoksa (hesap silinmişse) 401 dönülüyor; bu noktada
+ * elimizdeki oturum artık var olmayan bir kullanıcıya ait.
+ */
 async function me(req, res) {
   const user = await User.findByPk(req.user.id);
   if (!user) {

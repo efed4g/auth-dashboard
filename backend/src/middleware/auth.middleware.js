@@ -1,7 +1,20 @@
+/**
+ * Kimlik ve yetki kontrolü yapan middleware'ler.
+ *
+ * Korumalı her uç bu katmandan geçiyor. Frontend'deki ProtectedRoute sadece
+ * kullanıcıyı boş bir sayfayla karşılaştırmamak için var; erişimi gerçekten
+ * kesen yer burası, çünkü API'ye tarayıcı olmadan da istek atılabilir.
+ */
 const tokenUtil = require('../utils/token');
 const ApiError = require('../utils/apiError');
 
-// Access token yalnızca httpOnly cookie'den okunur; Authorization header desteklenmez.
+/**
+ * Geçerli bir access token arar, bulursa req.user'ı doldurur.
+ *
+ * Token yalnızca httpOnly cookie'den okunuyor; Authorization başlığı bilerek
+ * desteklenmiyor. Başlık da kabul edilseydi, token'ı JavaScript'in erişebildiği
+ * bir yerde tutmak gerekirdi ve httpOnly cookie tercihinin anlamı kalmazdı.
+ */
 function requireAuth(req, res, next) {
   const token = req.cookies?.[tokenUtil.ACCESS_COOKIE];
   if (!token) {
@@ -10,6 +23,8 @@ function requireAuth(req, res, next) {
 
   try {
     const payload = tokenUtil.verifyAccessToken(token);
+    // Token'ın tamamı değil yalnızca gerekli alanlar taşınıyor. Aşağıdaki
+    // katmanların ham token'a erişmesine gerek yok.
     req.user = {
       id: Number(payload.sub),
       email: payload.email,
@@ -17,7 +32,10 @@ function requireAuth(req, res, next) {
     };
     return next();
   } catch (err) {
-    // İstemci süresi dolan token'ı yenileyebilsin diye ayrı kod dönülür.
+    // "Süresi doldu" ile "geçersiz" ayrımı önemli: ilkinde istemci sessizce
+    // /auth/refresh deneyip isteği tekrarlayabilir, ikincisinde denemesi
+    // anlamsız. İkisine de aynı kodu dönseydik frontend her 401'de gereksiz
+    // bir yenileme isteği atardı.
     const expired = err.name === 'TokenExpiredError';
     return next(ApiError.unauthorized(
       expired ? 'Oturum süresi doldu.' : 'Geçersiz oturum.',
@@ -26,12 +44,22 @@ function requireAuth(req, res, next) {
   }
 }
 
-// requireAuth'tan sonra kullanılır.
+/**
+ * Rol kontrolü. requireAuth'tan SONRA zincire eklenmeli, çünkü req.user'ın
+ * dolu olmasına güveniyor.
+ *
+ * Fonksiyon döndüren bir fabrika: requireRoles('admin') şeklinde rota
+ * tanımında okunabiliyor ve ileride birden fazla rol geçmek mümkün.
+ *
+ * @param {...string} allowedRoles  Erişime izin verilen roller
+ */
 function requireRoles(...allowedRoles) {
   return function roleGuard(req, res, next) {
+    // Yanlış sırada kullanılırsa sessizce herkesi geçirmek yerine 401 dönüyor.
     if (!req.user) {
       return next(ApiError.unauthorized('Giriş yapmalısınız.'));
     }
+    // 403, 401'den farklı: kullanıcı tanınıyor ama bu kaynağa yetkisi yok.
     if (!allowedRoles.includes(req.user.role)) {
       return next(ApiError.forbidden('Bu işlem için yetkiniz yok.'));
     }

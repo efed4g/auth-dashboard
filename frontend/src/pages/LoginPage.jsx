@@ -2,17 +2,31 @@ import { useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useLoginMutation } from '../features/auth/authApi';
 import { getErrorMessage } from '../lib/errors';
-import AuthCard from '../components/layout/AuthCard';
-import TextField from '../components/ui/TextField';
 import Button from '../components/ui/Button';
 import Alert from '../components/ui/Alert';
 import GoogleButton from '../components/GoogleButton';
 
-// Backend, e-posta doğrulamasından sonra buraya ?verified=... ile yönlendirir.
+/**
+ * Giriş sayfası.
+ *
+ * Form durumu tek bir nesnede tutuluyor (her alan için ayrı useState yerine);
+ * alanlar name özniteliğiyle eşleştiği için tek bir onChange yetiyor.
+ */
+
+// Backend, e-posta doğrulama ucundan sonra kullanıcıyı buraya ?verified=...
+// parametresiyle yönlendiriyor. Kodun mesaja çevrilmesi arayüzün işi.
 const VERIFICATION_MESSAGES = {
   success: 'E-posta adresiniz doğrulandı. Şimdi giriş yapabilirsiniz.',
   invalid: 'Doğrulama bağlantısı geçersiz veya süresi dolmuş.',
 };
+
+// Etiketler görsel olarak gizli, yerlerine placeholder kullanılıyor. Yine de
+// sr-only label'lar duruyor: placeholder tek başına ekran okuyucular için
+// yeterli bir etiket sayılmıyor ve yazmaya başlayınca kayboluyor.
+const inputClass =
+  'w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 ' +
+  'placeholder:text-slate-400 transition focus:border-brand-500 focus:bg-white ' +
+  'focus:outline-none focus:ring-2 focus:ring-brand-500/20';
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -35,8 +49,12 @@ export default function LoginPage() {
     event.preventDefault();
     setError('');
     try {
+      // unwrap(): RTK Query hatayı varsayılan olarak sonuç nesnesinde döndürür.
+      // unwrap ile hata fırlatılır hale geliyor, böylece catch bloğu çalışıyor.
       await login(form).unwrap();
+      // Kullanıcı korumalı bir sayfadan yönlendirilmişse oraya, değilse panele.
       const target = location.state?.from?.pathname || '/dashboard';
+      // replace: geri tuşu kullanıcıyı giriş formuna geri getirmesin.
       navigate(target, { replace: true });
     } catch (err) {
       setError(getErrorMessage(err, 'Giriş yapılamadı.'));
@@ -44,69 +62,90 @@ export default function LoginPage() {
   };
 
   return (
-    <AuthCard
-      title="Giriş yap"
-      subtitle="Dashboard'a erişmek için hesabınıza giriş yapın."
-      footer={
-        <>
-          Hesabınız yok mu?{' '}
-          <Link to="/register" className="font-semibold text-brand-600 hover:text-brand-700">
-            Kayıt olun
-          </Link>
-        </>
-      }
-    >
-      <form onSubmit={handleSubmit} className="space-y-5">
-        {notice && (
-          <Alert tone={verifiedStatus === 'success' ? 'success' : 'error'}>{notice}</Alert>
-        )}
-        <Alert tone="error">{error}</Alert>
+    <div className="flex min-h-screen flex-col justify-center bg-white px-6 py-12">
+      <div className="mx-auto w-full max-w-sm">
+        <h1 className="text-center text-3xl font-bold tracking-tight text-slate-900">
+          Giriş yap
+        </h1>
 
-        <TextField
-          label="E-posta"
-          name="email"
-          type="email"
-          autoComplete="email"
-          required
-          value={form.email}
-          onChange={handleChange}
-          placeholder="ornek@firma.com"
-        />
+        <div className="mt-8 space-y-4">
+          {notice && (
+            <Alert tone={verifiedStatus === 'success' ? 'success' : 'error'}>{notice}</Alert>
+          )}
+          <Alert tone="error">{error}</Alert>
+        </div>
 
-        <TextField
-          label="Şifre"
-          name="password"
-          type="password"
-          autoComplete="current-password"
-          required
-          value={form.password}
-          onChange={handleChange}
-        />
+        <form onSubmit={handleSubmit} className="mt-8 space-y-3">
+          <div>
+            <label htmlFor="email" className="sr-only">E-posta</label>
+            <input
+              id="email"
+              name="email"
+              type="email"
+              autoComplete="email"
+              required
+              value={form.email}
+              onChange={handleChange}
+              placeholder="E-posta adresi"
+              className={inputClass}
+            />
+          </div>
 
-        <div className="flex justify-end">
+          <div>
+            <label htmlFor="password" className="sr-only">Şifre</label>
+            <input
+              id="password"
+              name="password"
+              type="password"
+              autoComplete="current-password"
+              required
+              value={form.password}
+              onChange={handleChange}
+              placeholder="Şifre"
+              className={inputClass}
+            />
+          </div>
+
+          <div className="pt-1">
+            <Button type="submit" loading={isLoading} className="py-3">
+              Giriş yap
+            </Button>
+          </div>
+        </form>
+
+        {/* "veya" ayıracı — şifre alanının ve giriş butonunun altında */}
+        <div className="relative my-6">
+          <div className="absolute inset-0 flex items-center" aria-hidden="true">
+            <div className="w-full border-t border-slate-200" />
+          </div>
+          <div className="relative flex justify-center">
+            <span className="bg-white px-3 text-xs text-slate-400">veya</span>
+          </div>
+        </div>
+
+        <GoogleButton />
+
+        <div className="mt-8 space-y-3">
           <Link
-            to="/forgot-password"
-            className="text-sm font-medium text-brand-600 hover:text-brand-700"
+            to="/register"
+            className="flex w-full items-center justify-center gap-1.5 rounded-lg border
+                       border-slate-200 py-3 text-sm font-semibold text-slate-900
+                       transition hover:bg-slate-50"
           >
-            Şifremi unuttum
+            Hesabın yok mu? Kayıt ol
+            <span aria-hidden="true">→</span>
           </Link>
-        </div>
 
-        <Button type="submit" loading={isLoading}>Giriş yap</Button>
-      </form>
-
-      <div className="relative my-6">
-        <div className="absolute inset-0 flex items-center" aria-hidden="true">
-          <div className="w-full border-t border-slate-200" />
-        </div>
-        <div className="relative flex justify-center">
-          <span className="bg-white px-3 text-xs uppercase tracking-wide text-slate-400">
-            veya
-          </span>
+          <div className="text-center">
+            <Link
+              to="/forgot-password"
+              className="text-sm text-slate-500 transition hover:text-slate-900"
+            >
+              Şifremi unuttum
+            </Link>
+          </div>
         </div>
       </div>
-
-      <GoogleButton />
-    </AuthCard>
+    </div>
   );
 }

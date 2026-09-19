@@ -1,3 +1,14 @@
+/**
+ * User modeli — users tablosu.
+ *
+ * Tablo iki farklı giriş yöntemini tek kayıtta taşıyor: e-posta + şifre ve
+ * Google. Ayrı tablolar açmak yerine bunu tercih ettim, çünkü aynı kişinin iki
+ * yöntemi de kullanması mümkün ve iki tablo olsaydı her seferinde eşleştirme
+ * yapmak gerekirdi. Bunun bedeli password alanının null olabilmesi.
+ *
+ * Alan adları JS tarafında camelCase, veritabanında snake_case (`field`
+ * seçeneğiyle eşleniyor) — her iki tarafın kendi yazım geleneğine uyması için.
+ */
 module.exports = (sequelize, DataTypes) => {
   const User = sequelize.define('User', {
     id: {
@@ -8,10 +19,13 @@ module.exports = (sequelize, DataTypes) => {
     email: {
       type: DataTypes.STRING,
       allowNull: false,
+      // Benzersizlik kısıtı veritabanı seviyesinde: uygulamadaki "önce sorgula,
+      // sonra ekle" kontrolü eşzamanlı iki isteği kaçırabilir, kısıt kaçırmaz.
       unique: true,
       validate: { isEmail: true },
     },
-    // Sadece Google ile giriş yapan kullanıcılarda null.
+    // Yalnızca Google ile açılan hesaplarda null. Kullanıcı isterse sonradan
+    // şifre belirleyebiliyor (bkz. auth.controller.js -> setPassword).
     password: {
       type: DataTypes.STRING,
       allowNull: true,
@@ -19,16 +33,21 @@ module.exports = (sequelize, DataTypes) => {
     role: {
       type: DataTypes.STRING,
       allowNull: false,
+      // Yeni kayıtlar her zaman en düşük yetkiyle başlıyor; admin yapmak
+      // ayrı ve bilinçli bir işlem (seed ya da elle güncelleme).
       defaultValue: 'user',
       validate: { isIn: [['user', 'admin']] },
     },
+    // Google'ın kullanıcı için ürettiği kalıcı kimlik. Eşleştirmede e-postadan
+    // önce buna bakılıyor: kullanıcı Google hesabının e-postasını değiştirse
+    // bile aynı hesaba bağlanmaya devam ediyor.
     googleUid: {
       type: DataTypes.STRING,
       allowNull: true,
       unique: true,
       field: 'google_uid',
     },
-    // Google profilinden gelir; her girişte tazelenir.
+    // Ad ve fotoğraf Google profilinden geliyor, her girişte güncelleniyor.
     displayName: {
       type: DataTypes.STRING,
       allowNull: true,
@@ -45,7 +64,9 @@ module.exports = (sequelize, DataTypes) => {
       defaultValue: false,
       field: 'is_verified',
     },
-    // Token'ların kendisi değil SHA-256 özeti saklanır.
+    // Doğrulama ve sıfırlama token'larının kendisi değil SHA-256 özeti tutuluyor
+    // (64 karakter). Veritabanı sızsa bile bu değerlerle kimse hesap
+    // doğrulayamaz ya da şifre sıfırlayamaz.
     verificationToken: {
       type: DataTypes.STRING(64),
       allowNull: true,
@@ -69,20 +90,33 @@ module.exports = (sequelize, DataTypes) => {
   }, {
     tableName: 'users',
     timestamps: false,
+    /**
+     * Varsayılan sorgu kapsamı.
+     *
+     * Hassas alanlar SELECT'e hiç dahil edilmiyor. "Response'a eklemeyi
+     * unutmamak" yerine "hiç okumamak" tercih edildi: veri belleğe gelmezse
+     * kazara serialize edilmesi de mümkün olmuyor.
+     *
+     * hasPassword ise arayüzün "şifre belirle" mi "şifre değiştir" mi
+     * göstereceğine karar vermesi için gerekli. Hash'in kendisini taşımamak
+     * adına bu bilgi SQL tarafında boolean olarak hesaplanıyor.
+     */
     defaultScope: {
-      // Hassas alanlar kazara response'a sızmasın diye varsayılan olarak seçilmez.
-      // Şifrenin varlığı bilgisine ihtiyaç var ama hash'in kendisine yok; bu
-      // yüzden boolean olarak SQL tarafında hesaplanıyor.
       attributes: {
         exclude: ['password', 'verificationToken', 'resetPasswordToken'],
         include: [[sequelize.literal('("User"."password" IS NOT NULL)'), 'hasPassword']],
       },
     },
+    // Şifre doğrulama ve token eşleştirme gibi işlemlerde gizli alanlar gerekli.
+    // Bu kapsamı kullanan her yer bilinçli bir tercih yapmış oluyor.
     scopes: {
       withSecrets: { attributes: {} },
     },
   });
 
+  // Bir kullanıcının birden fazla aktif oturumu (cihazı) olabilir, bu yüzden
+  // hasMany. CASCADE: kullanıcı silinirse ona ait token kayıtları da gitsin,
+  // ortada sahipsiz oturum kalmasın.
   User.associate = (models) => {
     User.hasMany(models.RefreshToken, {
       foreignKey: 'userId',
@@ -91,7 +125,15 @@ module.exports = (sequelize, DataTypes) => {
     });
   };
 
-  // API response'una konulabilecek güvenli gösterim.
+  /**
+   * Kullanıcının API cevabına konulabilecek gösterimi.
+   *
+   * Modeli doğrudan res.json'a vermek yerine bu yöntemi kullanıyoruz: hangi
+   * alanların dışarı çıktığı burada açıkça yazılı, tabloya yeni bir sütun
+   * eklendiğinde istemeden sızmıyor.
+   *
+   * @returns {object} Kimlik, rol ve giriş yöntemi bilgileri
+   */
   User.prototype.toPublicJSON = function toPublicJSON() {
     return {
       id: this.id,
@@ -99,8 +141,9 @@ module.exports = (sequelize, DataTypes) => {
       role: this.role,
       isVerified: this.isVerified,
       hasGoogleAccount: Boolean(this.googleUid),
-      // Arayüz "şifre belirle" mi "şifre değiştir" mi göstereceğine buna bakar.
-      // defaultScope'ta SQL'den gelir, withSecrets'ta alanın kendisinden.
+      // Kayıt hangi kapsamla okunduysa oradan geliyor: varsayılan kapsamda
+      // SQL'in hesapladığı sanal alan, withSecrets'ta alanın kendisi dolu
+      // olduğu için ondan türetiliyor.
       hasPassword: this.get('hasPassword') ?? Boolean(this.password),
       displayName: this.displayName,
       photoUrl: this.photoUrl,

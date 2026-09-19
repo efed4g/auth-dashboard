@@ -1,8 +1,21 @@
 'use strict';
 
-// Refresh token'ları SHA-256 özetiyle saklamaya geçiş, rotasyon/iptal alanları
-// ve Google hesabı eşleştirmesi için google_uid.
-// Mevcut düz metin kayıtlar taşınamaz, temizlenir (bir kez yeniden giriş gerekir).
+/**
+ * Oturum şemasının güvenlik güncellemesi.
+ *
+ * Üç değişiklik bir arada:
+ *  1. Refresh token'lar artık düz metin değil SHA-256 özetiyle saklanıyor.
+ *  2. Rotasyon ve iptal için revoked_at / replaced_by_hash alanları eklendi.
+ *  3. Google hesabı eşleştirmesi için google_uid eklendi.
+ *
+ * Mevcut düz metin kayıtlar özete dönüştürülemez (hash tek yönlü), bu yüzden
+ * tablo boşaltılıyor. Pratik sonucu: o an açık olan oturumlar kapanıyor ve
+ * kullanıcılar bir kez yeniden giriş yapıyor. Veri kaybı olmayan, kabul
+ * edilebilir bir bedel.
+ *
+ * Tüm adımlar tek transaction'da: ortadaki bir adım hata verirse tablo
+ * yarı dönüştürülmüş halde kalmasın, ya hepsi uygulansın ya hiçbiri.
+ */
 module.exports = {
   async up(queryInterface, Sequelize) {
     const transaction = await queryInterface.sequelize.transaction();
@@ -42,6 +55,8 @@ module.exports = {
         allowNull: true,
       }, { transaction });
 
+      // "Tüm cihazlardan çık" ve aktif oturum sayımı her seferinde user_id
+      // üzerinden filtreliyor; indeks olmadan tablo büyüdükçe tam tarama olurdu.
       await queryInterface.addIndex('refresh_tokens', ['user_id'], {
         name: 'refresh_tokens_user_id_idx',
         transaction,

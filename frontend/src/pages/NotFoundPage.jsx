@@ -1,5 +1,12 @@
 import { Link } from 'react-router-dom';
 
+/**
+ * Tanımsız adresler için 404 sayfası.
+ *
+ * AppShell içinde değil: bilinmeyen adrese giren kullanıcının oturumu açık
+ * olmayabilir, üst menüyü çizmeye çalışmak kullanıcı bilgisi olmadan hataya
+ * yol açardı.
+ */
 export default function NotFoundPage() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-3 px-4 text-center">

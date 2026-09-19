@@ -3,9 +3,18 @@ import { getErrorMessage } from '../lib/errors';
 import Alert from '../components/ui/Alert';
 import FullPageSpinner from '../components/ui/FullPageSpinner';
 
+/**
+ * Yönetici kullanıcı listesi.
+ *
+ * Sayfaya erişim App.jsx'te ProtectedRoute ile, verinin kendisi backend'de
+ * requireRoles('admin') ile korunuyor. Normal bir kullanıcı adres çubuğuna
+ * /admin yazsa bile istek 403 döner ve aşağıdaki hata bileşeni görünür.
+ */
 export default function AdminPage() {
   const { data, isLoading, error } = useGetAdminUsersQuery();
 
+  // Üç durum ayrı ele alınıyor: yükleniyor, hata ve veri. RTK Query bu
+  // bayrakları kendisi ürettiği için ayrıca state tutmaya gerek kalmıyor.
   if (isLoading) return <FullPageSpinner label="Kullanıcılar yükleniyor…" />;
   if (error) return <Alert tone="error">{getErrorMessage(error)}</Alert>;
 

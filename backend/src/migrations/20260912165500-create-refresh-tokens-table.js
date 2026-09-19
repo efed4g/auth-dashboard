@@ -1,6 +1,18 @@
 'use strict';
 
-/** @type {import('sequelize-cli').Migration} */
+/**
+ * refresh_tokens tablosunun ilk hali.
+ *
+ * Bu aşamada token'lar henüz düz metin saklanıyordu; rotasyon ve iptal
+ * alanları sonraki migration'da (harden-auth-schema) eklendi. Adımı geriye
+ * dönük düzeltmek yerine olduğu gibi bıraktım, şemanın nasıl geliştiği
+ * migration geçmişinden okunabilsin.
+ *
+ * ON DELETE CASCADE: kullanıcı silindiğinde oturum kayıtları da gitsin,
+ * sahipsiz satır kalmasın.
+ *
+ * @type {import('sequelize-cli').Migration}
+ */
 module.exports = {
   async up(queryInterface, Sequelize) {
     await queryInterface.createTable('refresh_tokens', {

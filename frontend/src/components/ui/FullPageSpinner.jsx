@@ -1,3 +1,11 @@
+/**
+ * Tam sayfa yükleniyor göstergesi.
+ *
+ * Oturum kontrolü gibi, sonucu gelmeden ekranda bir şey çizilemeyecek
+ * durumlarda kullanılıyor. label parametresi ne beklendiğini yazabilmek için:
+ * "Yükleniyor" yerine "Oturum kontrol ediliyor" demek, bekleyen kullanıcıya
+ * neyin sürdüğünü anlatıyor.
+ */
 export default function FullPageSpinner({ label = 'Yükleniyor…' }) {
   return (
     <div className="flex min-h-screen items-center justify-center">

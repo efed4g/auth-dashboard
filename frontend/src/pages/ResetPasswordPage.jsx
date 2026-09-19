@@ -7,6 +7,13 @@ import TextField from '../components/ui/TextField';
 import Button from '../components/ui/Button';
 import Alert from '../components/ui/Alert';
 
+/**
+ * Yeni şifre belirleme sayfası.
+ *
+ * Kullanıcı buraya e-postadaki bağlantıyla geliyor, token adres satırında.
+ * Sayfa App.jsx'te bilerek hiçbir koruma grubunun içinde değil: oturum açık
+ * da olsa kapalı da olsa çalışması gerekiyor.
+ */
 const MIN_PASSWORD_LENGTH = 8;
 
 export default function ResetPasswordPage() {
@@ -14,7 +21,8 @@ export default function ResetPasswordPage() {
   const [searchParams] = useSearchParams();
   const [resetPassword, { isLoading }] = useResetPasswordMutation();
 
-  // Tek kullanımlık token; URL'den okunur, saklanmaz.
+  // Token yalnızca adres satırından okunuyor; state'e veya tarayıcı deposuna
+  // kopyalanmıyor. Tek kullanımlık bir değer, sayfadan çıkınca da kalmamalı.
   const token = searchParams.get('token');
   const [form, setForm] = useState({ password: '', passwordConfirm: '' });
   const [error, setError] = useState('');
@@ -36,12 +44,16 @@ export default function ResetPasswordPage() {
     try {
       const response = await resetPassword({ token, newPassword: form.password }).unwrap();
       setMessage(response.message);
+      // Kısa bir gecikmeyle yönlendiriliyor: hemen geçilseydi kullanıcı başarı
+      // mesajını göremeden giriş ekranında bulurdu kendini.
       setTimeout(() => navigate('/login', { replace: true }), 1500);
     } catch (err) {
       setError(getErrorMessage(err, 'Şifre güncellenemedi.'));
     }
   };
 
+  // Token hiç yoksa formu göstermenin anlamı yok: kullanıcı doldurup
+  // gönderdikten sonra hata almaktansa durumu baştan öğrensin.
   if (!token) {
     return (
       <AuthCard title="Şifre sıfırlama">
