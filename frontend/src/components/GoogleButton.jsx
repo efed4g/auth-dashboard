@@ -6,25 +6,20 @@ import { getErrorMessage } from '../lib/errors';
 import Alert from './ui/Alert';
 
 /**
- * "Google ile devam et" butonu.
+ * "Google ile devam et" butonu: önce Firebase penceresinden ID token alınıyor,
+ * sonra backend'e gönderilip oturum kuruluyor. Google tarafında "kayıt" ile
+ * "giriş" ayrımı olmadığı için giriş ve kayıt sayfasında aynı bileşen.
  *
- * İki aşamalı bir akış yönetiyor: önce Firebase penceresinden ID token
- * alınıyor, sonra bu token backend'e gönderilip oturum kuruluyor. Giriş ve
- * kayıt sayfalarının ikisinde de kullanılıyor; Google tarafında "kayıt" ile
- * "giriş" ayrımı olmadığı için tek bileşen yeterli.
- *
- * @param {Function} [onError] Hata mesajını üst forma da bildirmek için
+ * @param {Function} [onError] Hata mesajını üst forma bildirmek için
  */
 export default function GoogleButton({ onError }) {
   const navigate = useNavigate();
   const [loginWithGoogle, { isLoading }] = useLoginWithGoogleMutation();
-  // Popup aşaması RTK Query'nin dışında kaldığı için kendi bekleme durumu
-  // tutuluyor; isLoading yalnızca backend isteğini kapsıyor.
+  // Popup aşaması RTK Query dışında kaldığı için ayrı bekleme durumu;
+  // isLoading yalnızca backend isteğini kapsıyor.
   const [popupPending, setPopupPending] = useState(false);
   const [localError, setLocalError] = useState('');
 
-  // Firebase yapılandırılmamışsa çalışmayan bir buton göstermek yerine
-  // durumu açıklıyoruz.
   if (!isFirebaseConfigured) {
     return (
       <Alert tone="info">
@@ -41,21 +36,19 @@ export default function GoogleButton({ onError }) {
       await loginWithGoogle(idToken).unwrap();
       navigate('/dashboard', { replace: true });
     } catch (err) {
-      // Kullanıcının pencereyi kendi kapatması bir hata değil, vazgeçmesi.
-      // Uyarı göstermek kafa karıştırıcı olurdu.
+      // Pencereyi kapatmak hata değil, vazgeçmek.
       if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request') {
         return;
       }
-      // Hata iki ayrı kaynaktan gelebiliyor: backend cevabı (err.data dolu)
-      // ya da Firebase SDK'sı (err.message). İkisinin yapısı farklı olduğu
-      // için mesaj buna göre çıkarılıyor.
+      // Hata backend cevabından (err.data) ya da Firebase SDK'sından
+      // (err.message) gelebiliyor; yapıları farklı.
       const message = err?.data
         ? getErrorMessage(err, 'Google ile giriş başarısız.')
         : err?.message || 'Google ile giriş başarısız.';
       setLocalError(message);
       onError?.(message);
     } finally {
-      // finally: hata da olsa vazgeçilse de buton tekrar tıklanabilir olmalı.
+      // Hata da olsa vazgeçilse de buton tekrar tıklanabilir olmalı.
       setPopupPending(false);
     }
   };

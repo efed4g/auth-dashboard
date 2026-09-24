@@ -1,7 +1,12 @@
 import { useState } from 'react';
 import { useSelector } from 'react-redux';
 import { selectUser } from '../features/auth/authSlice';
-import { useSetPasswordMutation } from '../features/auth/authApi';
+import { useNavigate } from 'react-router-dom';
+import {
+  useSetPasswordMutation,
+  useDeactivateAccountMutation,
+  useDeleteAccountMutation,
+} from '../features/auth/authApi';
 import { getErrorMessage } from '../lib/errors';
 import TextField from '../components/ui/TextField';
 import Button from '../components/ui/Button';
@@ -10,16 +15,13 @@ import Alert from '../components/ui/Alert';
 /**
  * Hesap güvenliği sayfası.
  *
- * Tek bir form iki işi görüyor: Google ile açılmış şifresiz hesaba şifre
- * eklemek ve mevcut şifreyi değiştirmek. Hangi durumda olunduğu kullanıcının
- * hasPassword bilgisinden anlaşılıyor; iki ayrı sayfa yapmak yerine aynı
- * formu uyarlamak, arka uçta da tek bir uçla karşılanıyor.
+ * Tek form iki işi görüyor: şifresiz (Google) hesaba şifre eklemek ve mevcut
+ * şifreyi değiştirmek. Hangi durumda olunduğu hasPassword'dan anlaşılıyor.
  */
 
 const MIN_PASSWORD_LENGTH = 8;
 
-// Form başarıyla gönderildikten sonra sıfırlamak için sabit başlangıç değeri.
-// Şifre alanlarının ekranda dolu kalmaması gerekiyor.
+// Gönderim sonrası şifre alanları ekranda dolu kalmasın.
 const EMPTY_FORM = { currentPassword: '', newPassword: '', newPasswordConfirm: '' };
 
 export default function SecurityPage() {
@@ -30,9 +32,20 @@ export default function SecurityPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  // Formun hangi biçimde görüneceğini belirleyen tek bilgi. Sunucudan geliyor;
-  // şifre hash'i istemciye hiç gönderilmediği için varlığı boolean olarak
-  // taşınıyor (bkz. User.toPublicJSON).
+  // Her bölüm kendi hata durumunu tutuyor; aynı state paylaşılsaydı birinin
+  // hatası diğerinin ekranında görünürdü.
+  const [deactivate, { isLoading: deactivating }] = useDeactivateAccountMutation();
+  const [confirmEmail, setConfirmEmail] = useState('');
+  const [deactivateError, setDeactivateError] = useState('');
+
+  const navigate = useNavigate();
+  const [deleteAccount, { isLoading: deleting }] = useDeleteAccountMutation();
+  const [deleteEmail, setDeleteEmail] = useState('');
+  const [acknowledged, setAcknowledged] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+
+  // Hash istemciye hiç gönderilmiyor, varlığı boolean olarak taşınıyor
+  // (bkz. User.toPublicJSON).
   const hasPassword = user?.hasPassword;
 
   const handleChange = (event) => {
@@ -51,8 +64,7 @@ export default function SecurityPage() {
     }
 
     try {
-      // Mevcut şifre yalnızca gerçekten varsa gönderiliyor. Şifresiz hesapta
-      // boş bir alan göndermek sunucuda gereksiz doğrulama hatası üretirdi.
+      // Şifresiz hesapta boş alan göndermek sunucuda gereksiz hata üretirdi.
       const response = await setPassword({
         ...(hasPassword ? { currentPassword: form.currentPassword } : {}),
         newPassword: form.newPassword,
@@ -61,6 +73,35 @@ export default function SecurityPage() {
       setForm(EMPTY_FORM);
     } catch (err) {
       setError(getErrorMessage(err, 'Şifre kaydedilemedi.'));
+    }
+  };
+
+  // Yönlendirme gerekmiyor: /auth/me yeniden çekilince ProtectedRoute
+  // etkinleştirme ekranını kendiliğinden gösteriyor.
+  const handleDeactivate = async (event) => {
+    event.preventDefault();
+    setDeactivateError('');
+    try {
+      await deactivate({ confirmEmail }).unwrap();
+    } catch (err) {
+      setDeactivateError(getErrorMessage(err, 'Hesap devre dışı bırakılamadı.'));
+    }
+  };
+
+  // Geri dönüşü olmadığı için tarayıcının onay penceresi de araya giriyor.
+  const handleDelete = async (event) => {
+    event.preventDefault();
+    setDeleteError('');
+
+    if (!window.confirm('Hesabınız ve tüm verileriniz kalıcı olarak silinecek. Bu işlem geri alınamaz. Devam edilsin mi?')) {
+      return;
+    }
+
+    try {
+      await deleteAccount({ confirmEmail: deleteEmail, acknowledged }).unwrap();
+      navigate('/login', { replace: true });
+    } catch (err) {
+      setDeleteError(getErrorMessage(err, 'Hesap silinemedi.'));
     }
   };
 
@@ -138,6 +179,84 @@ export default function SecurityPage() {
           </ul>
         </aside>
       </div>
+
+      {/* Amber: geri dönüşü var. Kırmızı: yok. Renk ve sıralama, yanlışlıkla
+          ağır olanın seçilmesini zorlaştırmak için. */}
+      <section className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-amber-200">
+        <h2 className="text-sm font-semibold text-amber-800">Hesabı devre dışı bırak</h2>
+        <p className="mt-2 text-sm leading-relaxed text-slate-600">
+          Hesabınız kapatılır ve uygulamayı kullanamazsınız. Verileriniz
+          silinmez; istediğiniz zaman giriş yapıp yeniden etkinleştirebilirsiniz.
+        </p>
+
+        <form onSubmit={handleDeactivate} className="mt-5 max-w-sm space-y-4">
+          <Alert tone="error">{deactivateError}</Alert>
+
+          <TextField
+            label="Onaylamak için e-posta adresinizi yazın"
+            name="confirmEmail"
+            type="email"
+            required
+            value={confirmEmail}
+            onChange={(event) => setConfirmEmail(event.target.value)}
+            hint={user?.email}
+          />
+
+          <Button
+            type="submit"
+            variant="danger"
+            loading={deactivating}
+            // Asıl kontrol sunucuda; bu yalnızca yanlışlıkla gönderimi engelliyor.
+            disabled={confirmEmail.trim().toLowerCase() !== user?.email}
+          >
+            Hesabımı devre dışı bırak
+          </Button>
+        </form>
+      </section>
+
+      <section className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-red-300">
+        <h2 className="text-sm font-semibold text-red-800">Hesabı kalıcı olarak sil</h2>
+        <p className="mt-2 text-sm leading-relaxed text-slate-600">
+          Hesabınız, profiliniz ve tüm oturum kayıtlarınız veritabanından
+          silinir. <strong className="font-semibold text-red-800">Bu işlem geri
+          alınamaz.</strong> Sadece bir süre ara vermek istiyorsanız yukarıdaki
+          devre dışı bırakma seçeneğini kullanın.
+        </p>
+
+        <form onSubmit={handleDelete} className="mt-5 max-w-sm space-y-4">
+          <Alert tone="error">{deleteError}</Alert>
+
+          <TextField
+            label="Onaylamak için e-posta adresinizi yazın"
+            name="deleteEmail"
+            type="email"
+            required
+            value={deleteEmail}
+            onChange={(event) => setDeleteEmail(event.target.value)}
+            hint={user?.email}
+          />
+
+          {/* Geri alınamaz işlem için ikinci bir onay katmanı. */}
+          <label className="flex cursor-pointer items-start gap-2.5 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={acknowledged}
+              onChange={(event) => setAcknowledged(event.target.checked)}
+              className="mt-0.5 size-4 rounded border-slate-300 text-red-600 focus:ring-red-500"
+            />
+            Verilerimin kalıcı olarak silineceğini ve geri alınamayacağını anlıyorum.
+          </label>
+
+          <Button
+            type="submit"
+            variant="danger"
+            loading={deleting}
+            disabled={!acknowledged || deleteEmail.trim().toLowerCase() !== user?.email}
+          >
+            Hesabımı kalıcı olarak sil
+          </Button>
+        </form>
+      </section>
     </div>
   );
 }

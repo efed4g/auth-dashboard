@@ -1,20 +1,23 @@
 /**
  * Firebase Admin SDK sarmalayıcısı.
  *
- * Google ile girişte tarayıcı Firebase'den bir ID token alıyor, backend de o
- * token'ı burada doğruluyor. Admin SDK'nın doğrudan controller içinde
- * kurulmaması kasıtlı: Firebase yapılandırılmamışsa uygulamanın geri kalanı
- * çalışmaya devam etmeli, bu dosya da "kapalı" moda düşebilmeli.
+ * Google girişinde tarayıcı Firebase'den bir ID token alıyor, backend de onu
+ * burada doğruluyor. Ayrı dosyada olması Firebase yapılandırılmamışken
+ * uygulamanın geri kalanının çalışmaya devam etmesini sağlıyor.
  */
-const { initializeApp, cert, getApps } = require('firebase-admin/app');
-const { getAuth } = require('firebase-admin/auth');
 const env = require('./env');
 
 let firebaseApp = null;
 
+// require'lar bilerek modül tepesinde değil: firebase-admin, ESM-only olan
+// `jose` paketini çekiyor. Google girişi kapalıyken bu ağır SDK'yı hiç
+// yüklememek zaten doğrusu; yan faydası Jest'in CommonJS çalışma zamanının
+// testlerde ESM modülüne hiç dokunmaması.
 if (env.firebase.enabled) {
-  // getApps() kontrolü, modülün birden fazla kez yüklendiği durumlarda
-  // (nodemon yeniden başlatması, test) "app already exists" hatasını önlüyor.
+  const { initializeApp, cert, getApps } = require('firebase-admin/app');
+
+  // getApps() kontrolü, modül birden fazla kez yüklendiğinde (nodemon, test)
+  // "app already exists" hatasını önlüyor.
   firebaseApp = getApps().length
     ? getApps()[0]
     : initializeApp({
@@ -25,27 +28,28 @@ if (env.firebase.enabled) {
       }),
     });
 } else {
-  // Hata fırlatmıyoruz: eksik Firebase yapılandırması bütün uygulamayı
-  // durdurmamalı. Sadece uyarı verip Google girişini kapalı bırakıyoruz.
+  // Eksik yapılandırma bütün uygulamayı durdurmamalı; yalnızca Google girişi kapalı.
   console.warn('[firebase] FIREBASE_* değişkenleri eksik — Google ile giriş devre dışı.');
 }
 
 /**
  * Tarayıcıdan gelen Firebase ID token'ını doğrular.
  *
- * @param   {string} idToken  İstemcinin gönderdiği ID token
+ * @param   {string} idToken
  * @returns {Promise<object>} Çözülmüş claim'ler (uid, email, email_verified...)
- * @throws  Token geçersiz/süresi dolmuşsa veya Firebase kapalıysa hata fırlatır.
+ * @throws  Token geçersizse veya Firebase kapalıysa.
  */
 function verifyIdToken(idToken) {
   if (!firebaseApp) {
     throw new Error('Firebase yapılandırılmamış.');
   }
+  // Buraya yalnızca firebaseApp kurulmuşken gelinebiliyor, yani SDK zaten
+  // yüklenmiş durumda; require önbellekten dönüyor.
+  const { getAuth } = require('firebase-admin/auth');
   return getAuth(firebaseApp).verifyIdToken(idToken);
 }
 
 module.exports = {
-  // Controller, Google ucuna gelen isteği reddetmeden önce buna bakıyor.
   isEnabled: () => Boolean(firebaseApp),
   verifyIdToken,
 };

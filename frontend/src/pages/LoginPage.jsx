@@ -20,9 +20,8 @@ const VERIFICATION_MESSAGES = {
   invalid: 'Doğrulama bağlantısı geçersiz veya süresi dolmuş.',
 };
 
-// Etiketler görsel olarak gizli, yerlerine placeholder kullanılıyor. Yine de
-// sr-only label'lar duruyor: placeholder tek başına ekran okuyucular için
-// yeterli bir etiket sayılmıyor ve yazmaya başlayınca kayboluyor.
+// Etiketler sr-only: placeholder tek başına ekran okuyucular için yeterli bir
+// etiket sayılmıyor ve yazmaya başlayınca kayboluyor.
 const inputClass =
   'w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 ' +
   'placeholder:text-slate-400 transition focus:border-brand-500 focus:bg-white ' +
@@ -49,12 +48,11 @@ export default function LoginPage() {
     event.preventDefault();
     setError('');
     try {
-      // unwrap(): RTK Query hatayı varsayılan olarak sonuç nesnesinde döndürür.
-      // unwrap ile hata fırlatılır hale geliyor, böylece catch bloğu çalışıyor.
+      // unwrap(): hatayı sonuç nesnesi yerine fırlatılır hale getiriyor.
       await login(form).unwrap();
-      // Kullanıcı korumalı bir sayfadan yönlendirilmişse oraya, değilse panele.
+      // Korumalı bir sayfadan yönlendirildiyse oraya, değilse panele.
       const target = location.state?.from?.pathname || '/dashboard';
-      // replace: geri tuşu kullanıcıyı giriş formuna geri getirmesin.
+      // replace: geri tuşu giriş formuna geri getirmesin.
       navigate(target, { replace: true });
     } catch (err) {
       setError(getErrorMessage(err, 'Giriş yapılamadı.'));

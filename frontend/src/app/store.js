@@ -6,21 +6,15 @@ import authReducer, { sessionCleared } from '../features/auth/authSlice';
 /**
  * Oturumu sonlandıran hataları yakalayan middleware.
  *
- * Bu noktaya ulaşan bir 401, baseQuery'nin yenileme denemesinin de
- * başarısız olduğu anlamına geliyor; yapılacak tek şey oturumu temizlemek.
- * Böylece ProtectedRoute kullanıcıyı giriş ekranına alıyor.
- *
- * 403 bilerek kapsam dışı: normal bir kullanıcının admin ucuna erişememesi
- * de 403 dönüyor ve bu bir oturum sorunu değil. Dahil edilseydi kullanıcı
- * yetkisi olmayan bir sayfaya girmeye çalıştığında sistemden atılırdı.
+ * Buraya ulaşan 401, baseQuery'nin yenileme denemesinin de başarısız olduğu
+ * anlamına geliyor. 403 bilerek kapsam dışı: normal kullanıcının admin ucuna
+ * erişememesi de 403 dönüyor ve bu bir oturum sorunu değil.
  */
 const sessionExpiryMiddleware = (store) => (next) => (action) => {
   const result = next(action);
 
   if (isRejectedWithValue(action) && action.payload?.status === 401) {
-    // Durum kontrolü gereksiz dispatch'i önlüyor: zaten oturumu olmayan bir
-    // kullanıcı için her 401'de state'i tekrar temizlemek yeniden render
-    // tetiklerdi.
+    // Durum kontrolü gereksiz dispatch'i ve yeniden render'ı önlüyor.
     if (store.getState().auth.status === 'authenticated') {
       store.dispatch(sessionCleared());
     }
@@ -31,8 +25,8 @@ const sessionExpiryMiddleware = (store) => (next) => (action) => {
 
 export const store = configureStore({
   reducer: {
-    // API önbelleği ve oturum durumu ayrı tutuluyor: biri sunucudan gelen
-    // veriyi yönetiyor, diğeri yalnızca "kim giriş yapmış" bilgisini.
+    // API önbelleği ve oturum durumu ayrı: biri sunucu verisini, diğeri
+    // yalnızca "kim giriş yapmış" bilgisini yönetiyor.
     [api.reducerPath]: api.reducer,
     auth: authReducer,
   },
@@ -40,6 +34,5 @@ export const store = configureStore({
     getDefaultMiddleware().concat(api.middleware, sessionExpiryMiddleware),
 });
 
-// Sekme yeniden odaklandığında veya bağlantı geri geldiğinde RTK Query'nin
-// veriyi tazeleyebilmesi için gerekli.
+// Sekme yeniden odaklandığında veya bağlantı geri geldiğinde veriyi tazelemek için.
 setupListeners(store.dispatch);

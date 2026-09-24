@@ -1,17 +1,12 @@
 /**
  * Oturum durumu.
  *
- * Burada token TUTULMUYOR, tutulamaz da: token httpOnly cookie'de ve
- * JavaScript'in erişimine kapalı. Saklanan şey yalnızca sunucunun döndüğü
- * kullanıcı bilgisi (kim, hangi rol) ve oturumun hangi aşamada olduğu.
+ * Token burada TUTULMUYOR, tutulamaz da: httpOnly cookie'de ve JavaScript'in
+ * erişimine kapalı. Saklanan şey kullanıcı bilgisi ve oturumun aşaması.
  *
- * status neden dört değerli: "kullanıcı yok" ile "henüz bilmiyoruz" farklı
- * durumlar. İkisi tek bir null ile temsil edilseydi, sayfa ilk açıldığında
- * cevap gelmeden kullanıcı giriş ekranına yönlendirilirdi.
- *   idle          -> henüz sorulmadı
- *   loading       -> soruldu, cevap bekleniyor
- *   authenticated -> geçerli oturum var
- *   anonymous     -> oturum yok
+ * status dört değerli çünkü "kullanıcı yok" ile "henüz bilmiyoruz" farklı:
+ *   idle → henüz sorulmadı, loading → cevap bekleniyor,
+ *   authenticated → geçerli oturum, anonymous → oturum yok
  */
 import { createSlice } from '@reduxjs/toolkit';
 import { api } from './authApi';
@@ -31,17 +26,12 @@ const authSlice = createSlice({
       state.status = 'anonymous';
     },
   },
-  /**
-   * Durum, API isteklerinin sonucundan türetiliyor.
-   *
-   * Her bileşende "istek başarılıysa state'i güncelle" yazmak yerine
-   * matcher'larla merkezi olarak dinlemek, bir yerde güncellemeyi unutma
-   * ihtimalini ortadan kaldırıyor.
-   */
+  // Durum API sonuçlarından türetiliyor: her bileşende elle güncellemek
+  // yerine matcher'larla tek yerden dinleniyor.
   extraReducers: (builder) => {
     builder
-      // Yalnızca ilk sorguda loading'e geçiliyor. Sonraki tazelemelerde de
-      // geçseydi, arka planda veri yenilenirken ekran boşalırdı.
+      // Yalnızca ilk sorguda loading: sonraki tazelemelerde de geçseydi arka
+      // planda veri yenilenirken ekran boşalırdı.
       .addMatcher(api.endpoints.getMe.matchPending, (state) => {
         if (state.status === 'idle') state.status = 'loading';
       })
@@ -49,8 +39,7 @@ const authSlice = createSlice({
         state.user = payload.user;
         state.status = 'authenticated';
       })
-      // /auth/me başarısız oldu: baseQuery yenilemeyi de denedi ve olmadı.
-      // Bu noktada oturum gerçekten yok demektir.
+      // baseQuery yenilemeyi de denedi ve olmadı: oturum gerçekten yok.
       .addMatcher(api.endpoints.getMe.matchRejected, (state) => {
         state.user = null;
         state.status = 'anonymous';

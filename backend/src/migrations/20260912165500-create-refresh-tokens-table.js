@@ -1,15 +1,10 @@
 'use strict';
 
 /**
- * refresh_tokens tablosunun ilk hali.
+ * refresh_tokens tablosunun ilk hali. Token'lar bu aşamada düz metin; hash,
+ * rotasyon ve iptal alanları harden-auth-schema migration'ında eklendi.
  *
- * Bu aşamada token'lar henüz düz metin saklanıyordu; rotasyon ve iptal
- * alanları sonraki migration'da (harden-auth-schema) eklendi. Adımı geriye
- * dönük düzeltmek yerine olduğu gibi bıraktım, şemanın nasıl geliştiği
- * migration geçmişinden okunabilsin.
- *
- * ON DELETE CASCADE: kullanıcı silindiğinde oturum kayıtları da gitsin,
- * sahipsiz satır kalmasın.
+ * ON DELETE CASCADE: kullanıcı silindiğinde sahipsiz oturum satırı kalmasın.
  *
  * @type {import('sequelize-cli').Migration}
  */

@@ -3,50 +3,42 @@ const ApiError = require('../utils/apiError');
 const logger = require('../utils/logger');
 const env = require('../config/env');
 
-// Zincirin sonuna kadar gelen istek hiçbir rotaya uymamıştır. Express'in
-// varsayılan HTML hata sayfası yerine, diğer uçlarla aynı JSON biçimini
-// dönmesi için hatayı errorHandler'a yönlendiriyoruz.
+// Hiçbir rotaya uymayan istek. Express'in HTML hata sayfası yerine diğer
+// uçlarla aynı JSON biçimini dönmesi için errorHandler'a yönlendiriliyor.
 function notFoundHandler(req, res, next) {
   next(ApiError.notFound('Kaynak bulunamadı.'));
 }
 
 /**
- * Merkezi hata yakalayıcı. (Express hata middleware'i olarak tanınması için
- * dört parametreli imza zorunlu; `next` kullanılmasa da kaldırılamaz.)
+ * Merkezi hata yakalayıcı. Dört parametreli imza zorunlu; `next` kullanılmasa
+ * da kaldırılamaz, yoksa Express bunu hata middleware'i saymaz.
  *
- * Buradaki temel kural: istemciye yalnızca anlamlı ve güvenli bilgi gitsin.
- * Beklenmeyen hataların mesajı veritabanı yapısını ya da dosya yollarını ele
- * verebileceği için dışarıya genel bir metin dönüyor; ayrıntı ve stack trace
- * yalnızca sunucu logunda kalıyor.
+ * Kural: beklenmeyen hataların mesajı veritabanı yapısını veya dosya yollarını
+ * ele verebilir, bu yüzden dışarı genel metin gider; ayrıntı logda kalır.
  */
 function errorHandler(err, req, res, next) {
-  // Cevap yazılmaya başlandıysa artık durum kodu değiştirilemez; bu durumda
-  // Express'in yerleşik yakalayıcısına devredip bağlantıyı ona kapattırıyoruz.
+  // Cevap yazılmaya başlandıysa durum kodu değiştirilemez.
   if (res.headersSent) {
     return next(err);
   }
 
-  // Varsayılan olarak 500 kabul ediliyor; tanıyabildiğimiz hata türleri
-  // aşağıda daha anlamlı bir koda çekiliyor.
   let statusCode = 500;
   let message = 'Beklenmeyen bir sunucu hatası oluştu.';
   let code;
 
   if (err instanceof ApiError) {
-    // Kendi fırlattığımız hatalar: mesajı zaten kullanıcıya gösterilmek üzere yazıldı.
+    // Mesajı zaten kullanıcıya gösterilmek üzere yazıldı.
     statusCode = err.statusCode;
     message = err.message;
     code = err.code;
   } else if (err instanceof UniqueConstraintError) {
-    // Örn. aynı e-posta ile ikinci kayıt. Kullanıcı hatası olduğu için 409.
     statusCode = 409;
     message = 'Bu kayıt zaten mevcut.';
   } else if (err instanceof ValidationError) {
-    // Model seviyesindeki kurallar (isEmail, isIn...) burada yakalanıyor.
     statusCode = 400;
     message = 'Gönderilen veriler geçersiz.';
   } else if (err.type === 'entity.parse.failed') {
-    // express.json() bozuk gövdeyi ayrıştıramadı. Sunucu değil istemci hatası.
+    // express.json() bozuk gövdeyi ayrıştıramadı: istemci hatası.
     statusCode = 400;
     message = 'Geçersiz JSON gövdesi.';
   }
@@ -60,9 +52,8 @@ function errorHandler(err, req, res, next) {
   };
 
   if (isServerError) {
-    // Yalnızca gerçek sunucu hataları error seviyesinde loglanıyor. Hatalı
-    // şifre gibi beklenen durumlar da error olsaydı log'da gürültü yaratıp
-    // asıl sorunları görünmez kılardı.
+    // Hatalı şifre gibi beklenen durumlar error seviyesinde loglansaydı gerçek
+    // sorunlar gürültüde kaybolurdu.
     logger.error(err.message || 'Sunucu hatası', {
       ...context,
       stack: err.stack,
@@ -75,8 +66,8 @@ function errorHandler(err, req, res, next) {
   return res.status(statusCode).json({
     error: message,
     ...(code ? { code } : {}),
-    // Ayrıntı yalnızca development'ta ekleniyor: hata ayıklarken sunucu
-    // loguna bakmak zorunda kalmamak için. Production'da bu alan hiç yok.
+    ...(err.fields ? { fields: err.fields } : {}),
+    // Ayrıntı yalnızca development'ta; production'da bu alan hiç yok.
     ...(isServerError && !env.isProduction ? { detail: err.message } : {}),
   });
 }

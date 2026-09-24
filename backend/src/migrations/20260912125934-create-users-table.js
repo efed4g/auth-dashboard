@@ -1,12 +1,9 @@
 'use strict';
 
 /**
- * İlk migration: users tablosunun temel hali.
- *
- * Şema baştan eksiksiz tasarlanmadı; proje ilerledikçe (doğrulama, şifre
- * sıfırlama, Google girişi) ayrı migration'larla genişletildi. Tabloyu elle
- * değiştirmek yerine her adımı migration olarak tutmak, şemayı sıfırdan
- * tekrar kurulabilir hale getiriyor ve neyin ne zaman eklendiği görünüyor.
+ * İlk migration: users tablosunun temel hali. Şema sonraki migration'larla
+ * genişletildi; her adım ayrı dosyada tutuluyor ki şema sıfırdan yeniden
+ * kurulabilsin.
  */
 module.exports = {
   async up(queryInterface, Sequelize) {
