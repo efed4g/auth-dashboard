@@ -4,11 +4,9 @@ import { selectAuthStatus } from '../features/auth/authSlice';
 import FullPageSpinner from '../components/ui/FullPageSpinner';
 
 /**
- * ProtectedRoute'un tersi: yalnızca oturumu OLMAYANLARIN görmesi gereken
- * sayfaları (giriş, kayıt, şifremi unuttum) sarmalar.
- *
- * Oturumu açık bir kullanıcıyı giriş formunda tutmak kafa karıştırıcı; tekrar
- * giriş yapmaya çalışırsa da gereksiz bir oturum daha açılır.
+ * ProtectedRoute'un tersi: yalnızca oturumu olmayanların görmesi gereken
+ * sayfaları (giriş, kayıt, şifremi unuttum) sarmalar. Aksi halde tekrar giriş
+ * denemesi gereksiz bir oturum daha açardı.
  */
 export default function PublicOnlyRoute() {
   const status = useSelector(selectAuthStatus);
@@ -19,9 +17,7 @@ export default function PublicOnlyRoute() {
   }
 
   if (status === 'authenticated') {
-    // ProtectedRoute'un state'e koyduğu adres varsa oraya dönülüyor: kullanıcı
-    // korumalı bir sayfaya gitmek isteyip giriş ekranına düştüyse, giriş
-    // yaptıktan sonra hedefine ulaşsın.
+    // ProtectedRoute'un state'e koyduğu adres varsa oraya dönülüyor.
     const target = location.state?.from?.pathname || '/dashboard';
     return <Navigate to={target} replace />;
   }

@@ -1,19 +1,16 @@
 /**
- * Kimlik ve yetki kontrolü yapan middleware'ler.
- *
- * Korumalı her uç bu katmandan geçiyor. Frontend'deki ProtectedRoute sadece
- * kullanıcıyı boş bir sayfayla karşılaştırmamak için var; erişimi gerçekten
- * kesen yer burası, çünkü API'ye tarayıcı olmadan da istek atılabilir.
+ * Kimlik ve yetki kontrolü. Erişimi gerçekten kesen yer burası; frontend'deki
+ * ProtectedRoute yalnızca arayüz kolaylığı, API'ye tarayıcısız da istek atılabilir.
  */
 const tokenUtil = require('../utils/token');
 const ApiError = require('../utils/apiError');
 
 /**
- * Geçerli bir access token arar, bulursa req.user'ı doldurur.
+ * Geçerli access token arar, bulursa req.user'ı doldurur.
  *
  * Token yalnızca httpOnly cookie'den okunuyor; Authorization başlığı bilerek
- * desteklenmiyor. Başlık da kabul edilseydi, token'ı JavaScript'in erişebildiği
- * bir yerde tutmak gerekirdi ve httpOnly cookie tercihinin anlamı kalmazdı.
+ * desteklenmiyor, yoksa token'ı JavaScript'in erişebildiği bir yerde tutmak
+ * gerekir ve httpOnly tercihinin anlamı kalmazdı.
  */
 function requireAuth(req, res, next) {
   const token = req.cookies?.[tokenUtil.ACCESS_COOKIE];
@@ -23,8 +20,6 @@ function requireAuth(req, res, next) {
 
   try {
     const payload = tokenUtil.verifyAccessToken(token);
-    // Token'ın tamamı değil yalnızca gerekli alanlar taşınıyor. Aşağıdaki
-    // katmanların ham token'a erişmesine gerek yok.
     req.user = {
       id: Number(payload.sub),
       email: payload.email,
@@ -32,10 +27,8 @@ function requireAuth(req, res, next) {
     };
     return next();
   } catch (err) {
-    // "Süresi doldu" ile "geçersiz" ayrımı önemli: ilkinde istemci sessizce
-    // /auth/refresh deneyip isteği tekrarlayabilir, ikincisinde denemesi
-    // anlamsız. İkisine de aynı kodu dönseydik frontend her 401'de gereksiz
-    // bir yenileme isteği atardı.
+    // "Süresi doldu" ile "geçersiz" ayrı kodlar: ilkinde istemci /auth/refresh
+    // deneyip isteği tekrarlayabilir, ikincisinde denemesi anlamsız.
     const expired = err.name === 'TokenExpiredError';
     return next(ApiError.unauthorized(
       expired ? 'Oturum süresi doldu.' : 'Geçersiz oturum.',
@@ -45,21 +38,18 @@ function requireAuth(req, res, next) {
 }
 
 /**
- * Rol kontrolü. requireAuth'tan SONRA zincire eklenmeli, çünkü req.user'ın
- * dolu olmasına güveniyor.
+ * Rol kontrolü. requireAuth'tan SONRA zincire eklenmeli; req.user'ın dolu
+ * olmasına güveniyor.
  *
- * Fonksiyon döndüren bir fabrika: requireRoles('admin') şeklinde rota
- * tanımında okunabiliyor ve ileride birden fazla rol geçmek mümkün.
- *
- * @param {...string} allowedRoles  Erişime izin verilen roller
+ * @param {...string} allowedRoles Erişime izin verilen roller
  */
 function requireRoles(...allowedRoles) {
   return function roleGuard(req, res, next) {
-    // Yanlış sırada kullanılırsa sessizce herkesi geçirmek yerine 401 dönüyor.
+    // Yanlış sırada kullanılırsa sessizce herkesi geçirmesin.
     if (!req.user) {
       return next(ApiError.unauthorized('Giriş yapmalısınız.'));
     }
-    // 403, 401'den farklı: kullanıcı tanınıyor ama bu kaynağa yetkisi yok.
+    // 403: kullanıcı tanınıyor ama bu kaynağa yetkisi yok.
     if (!allowedRoles.includes(req.user.role)) {
       return next(ApiError.forbidden('Bu işlem için yetkiniz yok.'));
     }

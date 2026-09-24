@@ -1,20 +1,12 @@
 'use strict';
 
 /**
- * Oturum şemasının güvenlik güncellemesi.
+ * Oturum şemasının güvenlik güncellemesi: token'lar SHA-256 özetiyle
+ * saklanmaya başlıyor, rotasyon/iptal alanları ve google_uid ekleniyor.
  *
- * Üç değişiklik bir arada:
- *  1. Refresh token'lar artık düz metin değil SHA-256 özetiyle saklanıyor.
- *  2. Rotasyon ve iptal için revoked_at / replaced_by_hash alanları eklendi.
- *  3. Google hesabı eşleştirmesi için google_uid eklendi.
- *
- * Mevcut düz metin kayıtlar özete dönüştürülemez (hash tek yönlü), bu yüzden
- * tablo boşaltılıyor. Pratik sonucu: o an açık olan oturumlar kapanıyor ve
- * kullanıcılar bir kez yeniden giriş yapıyor. Veri kaybı olmayan, kabul
- * edilebilir bir bedel.
- *
- * Tüm adımlar tek transaction'da: ortadaki bir adım hata verirse tablo
- * yarı dönüştürülmüş halde kalmasın, ya hepsi uygulansın ya hiçbiri.
+ * Hash tek yönlü olduğu için mevcut düz metin kayıtlar dönüştürülemiyor;
+ * tablo boşaltılıyor, yani açık oturumlar kapanıyor ve bir kez yeniden giriş
+ * gerekiyor. Tüm adımlar tek transaction'da: ya hepsi uygulansın ya hiçbiri.
  */
 module.exports = {
   async up(queryInterface, Sequelize) {

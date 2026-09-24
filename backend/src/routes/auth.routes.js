@@ -10,41 +10,32 @@ const {
 } = require('../middleware/rateLimit.middleware');
 
 /**
- * /api/auth altındaki uçlar.
- *
- * Rota dosyası bilerek ince tutuldu: burada yalnızca "hangi yol, hangi
- * middleware'lerden geçerek hangi controller'a gider" bilgisi var. İş mantığı
- * controller'da, oturum yönetimi servis katmanında. Bu sayede bir ucun
- * korumalı olup olmadığı tek satıra bakarak anlaşılıyor.
+ * /api/auth altındaki uçlar. Burada yalnızca "hangi yol, hangi middleware'den
+ * geçip hangi controller'a gider" bilgisi var; iş mantığı controller'da.
  */
 const router = express.Router();
 
-// CSRF token'ı verir. Frontend, durum değiştiren ilk isteğinden önce çağırır.
+// Frontend, durum değiştiren ilk isteğinden önce çağırır.
 router.get('/csrf', asyncHandler(controller.getCsrfToken));
 
-// Kayıt ve e-posta doğrulama.
-// verify-email GET çünkü kullanıcı bu adrese e-postadaki bağlantıdan geliyor.
+// verify-email GET: kullanıcı bu adrese e-postadaki bağlantıdan geliyor.
 router.post('/register', registerLimiter, asyncHandler(controller.register));
 router.get('/verify-email', asyncHandler(controller.verifyEmail));
 
-// Giriş yolları: klasik e-posta/şifre ve Google.
 router.post('/login', loginLimiter, asyncHandler(controller.login));
 router.post('/google', oauthLimiter, asyncHandler(controller.loginWithGoogle));
 
-// Oturum yenileme ve çıkış. Üçünde de requireAuth yok, çünkü hepsi tam da
-// access token'ın süresi dolmuşken çalışabilmeli; kimlik kanıtı olarak
-// refresh cookie'si kullanılıyor.
+// Üçünde de requireAuth yok: hepsi access token'ın süresi dolmuşken de
+// çalışabilmeli, kimlik kanıtı olarak refresh cookie'si kullanılıyor.
 router.post('/refresh', asyncHandler(controller.refresh));
 router.post('/logout', asyncHandler(controller.logout));
 router.post('/logout-all', asyncHandler(controller.logoutAll));
 
-// Şifre sıfırlama akışı: istek ve yeni şifre belirleme.
 router.post('/forgot-password', passwordResetLimiter, asyncHandler(controller.forgotPassword));
 router.post('/reset-password', passwordResetLimiter, asyncHandler(controller.resetPassword));
 
-// Şifre belirleme/değiştirme oturum içinde yapılıyor, bu yüzden requireAuth
-// var. Rate limit de uygulanıyor: mevcut şifreyi deneme yanılmayla bulmaya
-// çalışmak da bir saldırı yüzeyi.
+// Rate limit burada da var: mevcut şifreyi deneme yanılmayla bulmaya çalışmak
+// da bir saldırı yüzeyi.
 router.post(
   '/set-password',
   requireAuth,
@@ -52,7 +43,13 @@ router.post(
   asyncHandler(controller.setPassword)
 );
 
-// Frontend açılışta bunu çağırıp oturumun geçerli olup olmadığını öğreniyor.
+// requireActive bilerek yok: aktifleştirmeyi zaten pasif kullanıcı çağıracak,
+// pasif bir hesap da silinebilmeli.
+router.post('/deactivate', requireAuth, asyncHandler(controller.deactivateAccount));
+router.post('/reactivate', requireAuth, asyncHandler(controller.reactivateAccount));
+router.post('/delete-account', requireAuth, asyncHandler(controller.deleteAccount));
+
+// Frontend açılışta çağırıp oturumun geçerli olup olmadığını öğreniyor.
 router.get('/me', requireAuth, asyncHandler(controller.me));
 
 module.exports = router;

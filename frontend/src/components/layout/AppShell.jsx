@@ -8,11 +8,8 @@ import Avatar from '../ui/Avatar';
 
 /**
  * Oturum açmış kullanıcının gördüğü ortak çerçeve: üst menü, hesap menüsü ve
- * sayfa içeriğinin yerleştiği alan.
- *
- * Rota seviyesinde sarmalayıcı olarak kullanılıyor (bkz. App.jsx), böylece
- * menü her sayfada ayrı ayrı çağrılmıyor ve sayfalar arasında geçerken
- * yeniden kurulmuyor.
+ * sayfa içeriği. Rota seviyesinde sarmalayıcı (bkz. App.jsx), böylece sayfa
+ * geçişlerinde yeniden kurulmuyor.
  */
 
 // NavLink, aktif bağlantıyı kendisi işaretliyor; sınıfı buna göre üretiyoruz.
@@ -28,13 +25,10 @@ export default function AppShell() {
   const [menuOpen, setMenuOpen] = useState(false);
 
   /**
-   * Çıkış işlemi.
+   * Çıkış. Yönlendirme finally içinde: sunucuya ulaşılamasa bile kullanıcıyı
+   * uygulamanın içinde bırakmak yanlış olurdu.
    *
    * @param {boolean} everywhere true ise bütün cihazlardaki oturumlar kapanır
-   *
-   * Yönlendirme finally içinde: sunucuya ulaşılamasa bile kullanıcıyı
-   * uygulamanın içinde bırakmak yanlış olurdu. Kullanıcı çıkmak istediğini
-   * belirtmiş, isteğin sonucu ne olursa olsun arayüzde oturum sonlandırılıyor.
    */
   const handleLogout = async (everywhere) => {
     setMenuOpen(false);
@@ -55,9 +49,9 @@ export default function AppShell() {
 
           <nav className="flex items-center gap-1">
             <NavLink to="/dashboard" className={navLinkClass}>Dashboard</NavLink>
-            {/* Menüyü gizlemek bir güvenlik önlemi değil, sadece kullanıcıya
-                erişemeyeceği bir bağlantı göstermemek. Adres elle yazılsa bile
-                hem ProtectedRoute hem de backend devreye giriyor. */}
+            <NavLink to="/profil" className={navLinkClass}>Profil</NavLink>
+            {/* Gizlemek güvenlik önlemi değil; adres elle yazılsa da
+                ProtectedRoute ve backend devreye giriyor. */}
             {user?.role === 'admin' && (
               <NavLink to="/admin" className={navLinkClass}>Yönetim</NavLink>
             )}

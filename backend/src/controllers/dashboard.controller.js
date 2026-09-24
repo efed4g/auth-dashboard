@@ -2,6 +2,7 @@
  * Panel verilerini hazırlayan controller.
  */
 const { User, RefreshToken } = require('../models');
+const profileService = require('../services/profile.service');
 
 /**
  * GET /api/dashboard
@@ -11,7 +12,8 @@ const { User, RefreshToken } = require('../models');
  * arayüzde gizlenmiyor, cevaba hiç eklenmiyor. Gizleme yaklaşımı veriyi ağ
  * üzerinden erişilebilir bırakırdı; tarayıcı konsolundan okumak yeterdi.
  *
- * @returns {{user: object, widgets: Array, admin?: object}}
+ * @returns {{user: object, displayName: string, profileCompletion: object,
+ *            widgets: Array, admin?: object}}
  */
 async function getDashboard(req, res) {
   // Kullanıcı token'dan değil veritabanından okunuyor: rol veya profil
@@ -24,12 +26,26 @@ async function getDashboard(req, res) {
     where: { userId: req.user.id, revokedAt: null },
   });
 
+  // Profili olmamak hata değil, yeni kullanıcının normal durumu: null dönüyor.
+  const profile = await profileService.getProfile(user.id);
+
   const payload = {
     user: user.toPublicJSON(),
+    // Hitap için üç kaynak, en kişiselden en genele: kullanıcının kendi
+    // girdiği ad soyad, Google profilinden gelen ad, son çare e-posta.
+    // Sıralama sunucuda kuruluyor ki her ekran aynı mantığı tekrarlamasın.
+    displayName: profile
+      ? `${profile.firstName} ${profile.lastName}`
+      : (user.displayName || user.email),
+    // Oran profile.service'te hesaplanıyor: aynı bilgi profil sayfasında da
+    // gerekiyor ve kuralı iki yerde ayrı tutmak kaymaya yol açardı.
+    profileCompletion: profileService.calculateCompletion(profile),
     widgets: [
       { key: 'account', label: 'Hesap', value: user.email },
       { key: 'role', label: 'Rol', value: user.role },
-      { key: 'sessions', label: 'Aktif oturum', value: activeSessions },
+      // İyelik eki bilerek: yönetici özetinde sistem genelini sayan bir
+      // "Toplam aktif oturum" kartı da var, ikisi aynı ekranda görünüyor.
+      { key: 'sessions', label: 'Aktif oturumların', value: activeSessions },
     ],
   };
 

@@ -1,11 +1,9 @@
 'use strict';
 
 /**
- * Google profil bilgileri için alanlar.
- *
- * Değerler Firebase ID token'ındaki name ve picture claim'lerinden geliyor ve
- * her girişte tazeleniyor. Kopya tutmak yerine her seferinde Google'a sormak
- * da mümkündü ama bu, arayüzün her açılışında dış servise bağımlı olmak demek.
+ * Google profil bilgileri için alanlar. Değerler Firebase ID token'ındaki
+ * name/picture claim'lerinden gelip her girişte tazeleniyor; kopya tutulması
+ * arayüzün her açılışta dış servise bağımlı olmasını engelliyor.
  */
 module.exports = {
   async up(queryInterface, Sequelize) {

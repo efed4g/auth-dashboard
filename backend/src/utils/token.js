@@ -1,11 +1,9 @@
 /**
  * Token üretimi, doğrulaması ve cookie yazımı.
  *
- * Oturumla ilgili bütün "düşük seviye" işler burada toplandı. Amaç, cookie
- * bayraklarının ve imzalama ayarlarının tek bir yerde durması: sameSite değerini
- * değiştirmek gerektiğinde controller'ları tek tek dolaşmak yerine bu dosyada
- * tek satır değişiyor. Karar mantığı (ne zaman oturum açılır, ne zaman iptal
- * edilir) burada değil, session.service.js'te.
+ * Cookie bayrakları ve imzalama ayarları tek yerde duruyor; sameSite gibi bir
+ * değeri değiştirmek controller'ları dolaşmayı gerektirmiyor. Karar mantığı
+ * (ne zaman oturum açılır/iptal edilir) burada değil, session.service.js'te.
  */
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
@@ -16,20 +14,14 @@ const REFRESH_COOKIE = 'refreshToken';
 const CSRF_COOKIE = 'csrfToken';
 
 /**
- * "15m", "7d" gibi JWT süre ifadelerini milisaniyeye çevirir.
- *
- * jsonwebtoken bu formatı anlıyor ama cookie'nin maxAge alanı milisaniye
- * istiyor. İki yerde ayrı ayrı süre tanımlamak yerine tek değeri çevirerek
- * token ömrü ile cookie ömrünün birbirinden kaymasını engelliyoruz.
- *
- * @param   {string} ttl  Örn. "15m", "7d"
- * @returns {number}      Milisaniye cinsinden süre
+ * "15m", "7d" gibi JWT sürelerini milisaniyeye çevirir.
+ * Cookie'nin maxAge'i milisaniye istiyor; tek değerden türetmek token ömrü ile
+ * cookie ömrünün birbirinden kaymasını engelliyor.
  */
 function ttlToMs(ttl) {
   const match = /^(\d+)([smhd])$/.exec(String(ttl).trim());
   if (!match) {
-    // Hatalı yazılmış bir TTL sessizce NaN'e dönüşüp cookie'yi oturumluk
-    // yapardı; sorunu açılışta görmek için hata fırlatıyoruz.
+    // Hatalı TTL sessizce NaN'e dönüşüp cookie'yi oturumluk yapardı.
     throw new Error(`Geçersiz TTL formatı: ${ttl}`);
   }
   const value = Number(match[1]);
@@ -40,40 +32,23 @@ function ttlToMs(ttl) {
 const ACCESS_TTL_MS = ttlToMs(env.jwt.accessTtl);
 const REFRESH_TTL_MS = ttlToMs(env.jwt.refreshTtl);
 
-/**
- * Token'ların veritabanında saklanan özetini üretir.
- *
- * Burada bilerek bcrypt kullanılmadı: bcrypt'in yavaşlığı, tahmin edilebilir
- * kullanıcı şifrelerini kaba kuvvete karşı korumak içindir. Bu değerler zaten
- * 256 bit rastgele olduğundan sözlük saldırısı anlamsız, SHA-256 yeterli ve
- * her refresh isteğinde çalışacağı için hızlı olması da avantaj.
- */
+// bcrypt yerine SHA-256: bcrypt'in yavaşlığı tahmin edilebilir şifreler için.
+// Bu değerler 256 bit rastgele, sözlük saldırısı anlamsız.
 function hashToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
 /**
- * E-posta doğrulama ve şifre sıfırlama için tek kullanımlık token üretir.
- *
- * JWT değil, anlamsız rastgele bir dize: içinde taşınacak bir bilgi yok ve
- * tek kullanımlık olması gerektiği için zaten veritabanı kaydına bağlı.
- * Ham hali kullanıcıya (bağlantıda), yalnızca özeti veritabanına gider;
- * böylece veritabanı okunsa bile kimsenin şifresi sıfırlanamaz.
- *
- * @returns {{token: string, hash: string}} Ham token ve saklanacak özeti
+ * E-posta doğrulama ve şifre sıfırlama için tek kullanımlık token.
+ * Ham hali kullanıcıya, yalnızca özeti veritabanına gider.
  */
 function generateOpaqueToken() {
   const token = crypto.randomBytes(32).toString('hex');
   return { token, hash: hashToken(token) };
 }
 
-/**
- * Access token üretir. Kısa ömürlüdür ve korumalı uçlarda kimlik kanıtıdır.
- *
- * Payload'a rol de konuyor ki her istekte kullanıcıyı veritabanından çekmek
- * gerekmesin. `type` claim'i ise access ile refresh'i birbirinden ayırıyor:
- * anahtarlar da farklı olduğu için biri diğerinin yerine sunulamıyor.
- */
+// Rol payload'a konuyor ki her istekte veritabanına gidilmesin.
+// `type` claim'i access ile refresh'i ayırıyor (anahtarlar da farklı).
 function signAccessToken(user) {
   return jwt.sign(
     { sub: String(user.id), email: user.email, role: user.role, type: 'access' },
@@ -82,15 +57,8 @@ function signAccessToken(user) {
   );
 }
 
-/**
- * Refresh token üretir ve yanında veritabanına yazılacak bilgileri döndürür.
- *
- * jti (benzersiz kimlik) olmadan aynı kullanıcı için aynı saniyede üretilen
- * iki token birebir aynı dizeye dönüşürdü; rotasyon zincirini takip
- * edebilmek için her token'ın farklı olması şart.
- *
- * @returns {{token: string, hash: string, expiresAt: Date}}
- */
+// jti olmadan aynı saniyede üretilen iki token birebir aynı dizeye dönüşürdü;
+// rotasyon zincirini takip edebilmek için her biri farklı olmalı.
 function signRefreshToken(user) {
   const token = jwt.sign(
     { sub: String(user.id), type: 'refresh', jti: crypto.randomUUID() },
@@ -104,9 +72,8 @@ function signRefreshToken(user) {
   };
 }
 
-// jwt.verify imzayı ve süreyi kontrol eder ama tipi kontrol etmez. `type`
-// karşılaştırması olmasaydı, anahtarların ayrı olmadığı bir yapılandırmada
-// refresh token access yerine kullanılabilirdi; ikinci bir güvenlik ağı.
+// jwt.verify imzayı ve süreyi kontrol eder ama tipi etmez; `type` karşılaştırması
+// ikinci güvenlik ağı.
 function verifyAccessToken(token) {
   const payload = jwt.verify(token, env.jwt.accessSecret);
   if (payload.type !== 'access') {
@@ -123,13 +90,8 @@ function verifyRefreshToken(token) {
   return payload;
 }
 
-/**
- * Bütün oturum cookie'lerinin ortak ayarları.
- *
- * secure ve sameSite değerleri ortamdan geliyor (bkz. config/env.js); burada
- * sabit yazılsalardı development'ta cookie hiç yazılmaz ya da production'da
- * korumasız kalırdı. path: '/' ise cookie'nin tüm uçlarda geçerli olması için.
- */
+// secure ve sameSite ortamdan geliyor: sabit yazılsalardı development'ta cookie
+// hiç yazılmaz ya da production'da korumasız kalırdı.
 function baseCookieOptions() {
   return {
     httpOnly: true,
@@ -140,17 +102,14 @@ function baseCookieOptions() {
   };
 }
 
-// Access ve refresh ayrı cookie'lerde: refresh yalnızca yenileme ucunda
-// kullanılıyor ve ömürleri farklı, tek cookie'de taşımanın bir faydası yok.
 function setAuthCookies(res, { accessToken, refreshToken }) {
   const options = baseCookieOptions();
   res.cookie(ACCESS_COOKIE, accessToken, { ...options, maxAge: ACCESS_TTL_MS });
   res.cookie(REFRESH_COOKIE, refreshToken, { ...options, maxAge: REFRESH_TTL_MS });
 }
 
-// Tek httpOnly olmayan cookie bu. Double-submit deseninin çalışması için
-// frontend'in değeri okuyup X-CSRF-Token başlığına koyabilmesi gerekiyor.
-// İçinde gizli bir bilgi taşımadığı için JS'e açık olması sorun değil.
+// Tek httpOnly olmayan cookie. Double-submit deseni için frontend'in değeri
+// okuyup X-CSRF-Token başlığına koyabilmesi gerekiyor.
 function setCsrfCookie(res, csrfToken) {
   res.cookie(CSRF_COOKIE, csrfToken, {
     ...baseCookieOptions(),
@@ -160,9 +119,7 @@ function setCsrfCookie(res, csrfToken) {
 }
 
 function clearAuthCookies(res) {
-  // Tarayıcı silme isteğini yalnızca name + path + domain üçlüsü birebir
-  // eşleşirse uyguluyor. Bu yüzden silerken de yazarkenki seçenekler veriliyor;
-  // aksi halde cookie sunucuda silinmiş sanılıp tarayıcıda kalmaya devam eder.
+  // Tarayıcı silmeyi yalnızca name + path + domain eşleşirse uyguluyor.
   const options = baseCookieOptions();
   res.clearCookie(ACCESS_COOKIE, options);
   res.clearCookie(REFRESH_COOKIE, options);
